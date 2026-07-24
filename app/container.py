@@ -3,11 +3,13 @@ import asyncio
 from app.db.session import SessionFactory, engine
 from app.exchanges.registry import ExchangeRegistry
 from app.repositories.assets import AssetRepository
+from app.repositories.blacklisted_assets import BlacklistedAssetRepository
 from app.repositories.exchanges import ExchangeRepository
 from app.repositories.favorites import FavoriteRepository
 from app.repositories.spread_buckets import SpreadBucketRepository
 from app.repositories.spread_peaks import SpreadPeakRepository
 from app.services.assets.read import AssetReadService
+from app.services.blacklist.read import BlacklistReadService
 from app.services.broadcast.hub import BroadcastHub
 from app.services.instruments.catalog import InstrumentCatalog
 from app.services.instruments.sync import InstrumentSyncService
@@ -26,6 +28,7 @@ class Container:
         self.exchange_repository = ExchangeRepository()
         self.asset_repository = AssetRepository()
         self.favorite_repository = FavoriteRepository()
+        self.blacklisted_asset_repository = BlacklistedAssetRepository()
         self.spread_bucket_repository = SpreadBucketRepository()
         self.spread_peak_repository = SpreadPeakRepository()
 
@@ -44,7 +47,11 @@ class Container:
         self.asset_read = AssetReadService(
             self.asset_repository,
             self.favorite_repository,
+            self.blacklisted_asset_repository,
             self.spread_peak_repository,
+        )
+        self.blacklist_read = BlacklistReadService(
+            self.blacklisted_asset_repository,
         )
         self.collector_supervisor = CollectorSupervisor(
             self.exchange_registry,
@@ -74,7 +81,9 @@ class Container:
         await self.instrument_sync.execute()
         async with SessionFactory() as session:
             favorites = await self.favorite_repository.list_ids(session)
+            blacklist = await self.blacklisted_asset_repository.list_ids(session)
         await self.runtime.set_favorites(favorites)
+        await self.runtime.set_blacklist(blacklist)
         self.runtime.changed.clear()
         self._tasks = [
             asyncio.create_task(self.collector_supervisor.run(), name="collector-supervisor"),

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from app.services.broadcast.hub import BroadcastHub
 from app.services.instruments.catalog import InstrumentCatalog
 from app.services.quotes.store import QuoteStore
+from app.services.quotes.subscriptions import select_active_asset_ids
 from app.services.runtime.state import RuntimeState
 from app.services.spreads.accumulator import SpreadAccumulator
 from app.services.spreads.arbitrage import select_best_arbitrage
@@ -32,11 +33,17 @@ class SpreadEngine:
     async def run(self) -> None:
         while not self._stop.is_set():
             runtime = await self._runtime.snapshot()
+            active_ids = select_active_asset_ids(
+                {asset.id for asset in self._catalog.all()}, runtime
+            )
             quote_snapshot = await self._quote_store.snapshot()
             updates = []
             now = datetime.now(UTC)
             stale_after_seconds = max(runtime.interval_ms / 1000 * 5, 60)
             for asset_id, quotes in quote_snapshot.items():
+                if asset_id not in active_ids:
+                    continue
+
                 asset = self._catalog.get(asset_id)
                 fresh_quotes = {
                     code: quote

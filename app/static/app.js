@@ -5,6 +5,7 @@ const defaults = {
   search: "",
   sortColumn: "current",
   sortDirection: "desc",
+  sortingPaused: false,
   hiddenColumns: [],
   theme: "light",
 };
@@ -26,6 +27,8 @@ function readSettings() {
 const state = {
   settings: readSettings(),
   assets: new Map(),
+  blacklist: new Map(),
+  frozenOrder: [],
   socket: null,
 };
 
@@ -33,10 +36,13 @@ const elements = {
   mode: document.querySelector("#mode"),
   interval: document.querySelector("#interval"),
   search: document.querySelector("#search"),
+  sortPause: document.querySelector("#sort-pause"),
   theme: document.querySelector("#theme"),
   rows: document.querySelector("#rows"),
   connection: document.querySelector("#connection"),
   template: document.querySelector("#row-template"),
+  blacklistCount: document.querySelector("#blacklist-count"),
+  blacklistItems: document.querySelector("#blacklist-items"),
   sortableHeaders: [...document.querySelectorAll("th[data-sort-key]")],
   columnToggles: [...document.querySelectorAll("[data-column-toggle]")],
 };
@@ -54,6 +60,7 @@ function applySettings() {
     toggle.checked = !state.settings.hiddenColumns.includes(toggle.dataset.columnToggle);
   }
   applyColumnVisibility();
+  updateSortPauseButton();
   updateSortIndicators();
 }
 
@@ -77,7 +84,14 @@ async function loadAssets() {
   for (const assetId of state.assets.keys()) {
     if (!receivedIds.has(assetId)) state.assets.delete(assetId);
   }
+  state.frozenOrder = state.frozenOrder.filter((assetId) => state.assets.has(assetId));
   render();
+}
+
+async function loadBlacklist() {
+  const items = await api("/api/v1/blacklist");
+  state.blacklist = new Map(items.map((item) => [item.id, item]));
+  renderBlacklist();
 }
 
 async function applyRuntimeSettings() {
@@ -202,20 +216,45 @@ function compareValues(left, right, direction) {
   return (Number(left) - Number(right)) * direction;
 }
 
-function sortedAssets() {
+function filteredAssets() {
   const query = state.settings.search.trim().toUpperCase();
   let items = [...state.assets.values()];
   if (state.settings.mode === "favorites") items = items.filter((item) => item.is_favorite);
   if (query) items = items.filter((item) => item.display_symbol.includes(query));
+  return items;
+}
+
+function sortByPreference(items) {
   const direction = state.settings.sortDirection === "asc" ? 1 : -1;
-  items.sort((left, right) =>
+  return [...items].sort((left, right) =>
     compareValues(
       sortValue(left, state.settings.sortColumn),
       sortValue(right, state.settings.sortColumn),
       direction,
     ),
   );
-  return items;
+}
+
+function sortedAssets() {
+  const items = filteredAssets();
+  if (!state.settings.sortingPaused) return sortByPreference(items);
+
+  if (state.frozenOrder.length === 0) {
+    state.frozenOrder = sortByPreference(items).map((item) => item.id);
+  }
+
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const ordered = [];
+  for (const assetId of state.frozenOrder) {
+    const item = itemsById.get(assetId);
+    if (!item) continue;
+    ordered.push(item);
+    itemsById.delete(assetId);
+  }
+
+  const newItems = sortByPreference([...itemsById.values()]);
+  for (const item of newItems) state.frozenOrder.push(item.id);
+  return [...ordered, ...newItems];
 }
 
 function applyColumnVisibility() {
@@ -225,10 +264,18 @@ function applyColumnVisibility() {
   }
 }
 
+function updateSortPauseButton() {
+  const paused = state.settings.sortingPaused;
+  elements.sortPause.textContent = paused ? "Продолжить сортировку" : "Пауза сортировки";
+  elements.sortPause.classList.toggle("active", paused);
+  elements.sortPause.setAttribute("aria-pressed", String(paused));
+}
+
 function updateSortIndicators() {
   for (const header of elements.sortableHeaders) {
     const active = header.dataset.sortKey === state.settings.sortColumn;
     header.classList.toggle("sort-active", active);
+    header.classList.toggle("sort-paused", active && state.settings.sortingPaused);
     header.setAttribute(
       "aria-sort",
       active ? (state.settings.sortDirection === "asc" ? "ascending" : "descending") : "none",
@@ -243,10 +290,14 @@ function render() {
   const fragment = document.createDocumentFragment();
   for (const asset of sortedAssets()) {
     const row = elements.template.content.firstElementChild.cloneNode(true);
+    row.dataset.assetId = String(asset.id);
+
     const favorite = row.querySelector(".favorite");
     favorite.textContent = asset.is_favorite ? "★" : "☆";
     favorite.classList.toggle("active", asset.is_favorite);
     favorite.addEventListener("click", () => toggleFavorite(asset));
+
+    row.querySelector(".blacklist-action").addEventListener("click", () => addToBlacklist(asset));
     row.querySelector(".symbol").textContent = asset.display_symbol;
     renderExecutionQuote(row.querySelector(".binance"), asset, "binance");
     renderExecutionQuote(row.querySelector(".bybit"), asset, "bybit");
@@ -273,11 +324,74 @@ function render() {
   updateSortIndicators();
 }
 
+function renderBlacklist() {
+  elements.blacklistCount.textContent = String(state.blacklist.size);
+  if (state.blacklist.size === 0) {
+    const empty = document.createElement("div");
+    empty.className = "blacklist-empty";
+    empty.textContent = "Список пуст";
+    elements.blacklistItems.replaceChildren(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const item of [...state.blacklist.values()].sort((left, right) =>
+    left.display_symbol.localeCompare(right.display_symbol, "ru-RU"))) {
+    const row = document.createElement("div");
+    row.className = "blacklist-item";
+
+    const symbol = document.createElement("span");
+    symbol.textContent = item.display_symbol;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Убрать";
+    remove.addEventListener("click", () => removeFromBlacklist(item));
+
+    row.append(symbol, remove);
+    fragment.appendChild(row);
+  }
+  elements.blacklistItems.replaceChildren(fragment);
+}
+
 async function toggleFavorite(asset) {
   const method = asset.is_favorite ? "DELETE" : "POST";
-  await api(`/api/v1/favorites/${asset.id}`, { method });
-  asset.is_favorite = !asset.is_favorite;
-  render();
+  try {
+    await api(`/api/v1/favorites/${asset.id}`, { method });
+    asset.is_favorite = !asset.is_favorite;
+    render();
+  } catch (error) {
+    console.error(error);
+    alert("Не удалось изменить избранное");
+  }
+}
+
+async function addToBlacklist(asset) {
+  const confirmed = confirm(
+    `Добавить ${asset.display_symbol} в чёрный список? Получение его котировок будет остановлено.`,
+  );
+  if (!confirmed) return;
+
+  try {
+    await api(`/api/v1/blacklist/${asset.id}`, { method: "POST" });
+    state.assets.delete(asset.id);
+    state.frozenOrder = state.frozenOrder.filter((assetId) => assetId !== asset.id);
+    await loadBlacklist();
+    render();
+  } catch (error) {
+    console.error(error);
+    alert("Не удалось добавить актив в чёрный список");
+  }
+}
+
+async function removeFromBlacklist(item) {
+  try {
+    await api(`/api/v1/blacklist/${item.id}`, { method: "DELETE" });
+    await Promise.all([loadBlacklist(), loadAssets()]);
+  } catch (error) {
+    console.error(error);
+    alert("Не удалось убрать актив из чёрного списка");
+  }
 }
 
 for (const header of elements.sortableHeaders) {
@@ -304,6 +418,23 @@ for (const toggle of elements.columnToggles) {
     applyColumnVisibility();
   });
 }
+
+elements.sortPause.addEventListener("click", () => {
+  const nextPaused = !state.settings.sortingPaused;
+  if (nextPaused) {
+    const visibleOrder = [...elements.rows.querySelectorAll("tr[data-asset-id]")]
+      .map((row) => Number(row.dataset.assetId));
+    state.frozenOrder = visibleOrder.length
+      ? visibleOrder
+      : sortByPreference(filteredAssets()).map((item) => item.id);
+  } else {
+    state.frozenOrder = [];
+  }
+  state.settings.sortingPaused = nextPaused;
+  saveSettings();
+  updateSortPauseButton();
+  render();
+});
 
 elements.mode.addEventListener("change", async () => {
   state.settings.mode = elements.mode.value;
@@ -337,7 +468,7 @@ elements.theme.addEventListener("click", () => {
 });
 
 applySettings();
-await loadAssets();
+await Promise.all([loadAssets(), loadBlacklist()]);
 await applyRuntimeSettings();
 connectSocket();
-setInterval(loadAssets, 60000);
+setInterval(() => Promise.all([loadAssets(), loadBlacklist()]), 60000);

@@ -12,7 +12,9 @@
 - текущая исполнимая дельта по лучшим bid/ask;
 - максимальная дельта за всё время, 24 часа и 1 час;
 - минутные максимумы в MySQL вместо хранения каждого тика;
-- избранные активы в MySQL;
+- избранные активы и чёрный список в MySQL;
+- исключение чёрного списка из WebSocket/polling-подписок;
+- пауза динамической сортировки без остановки обновления цен;
 - настройки интерфейса в `localStorage` браузера;
 - FastAPI, MySQL 8.4, phpMyAdmin и статический интерфейс в Docker Compose.
 
@@ -42,6 +44,9 @@ docker compose up --build
 - `GET /api/v1/favorites`
 - `POST /api/v1/favorites/{asset_id}`
 - `DELETE /api/v1/favorites/{asset_id}`
+- `GET /api/v1/blacklist`
+- `POST /api/v1/blacklist/{asset_id}`
+- `DELETE /api/v1/blacklist/{asset_id}`
 - `GET /api/v1/runtime/settings`
 - `PUT /api/v1/runtime/mode`
 - `PUT /api/v1/runtime/interval`

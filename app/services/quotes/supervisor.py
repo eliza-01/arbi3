@@ -1,11 +1,11 @@
 import asyncio
 import logging
 
-from app.core.enums import CollectionMode
 from app.exchanges.registry import ExchangeRegistry
 from app.services.instruments.catalog import InstrumentCatalog
 from app.services.quotes.collector import ExchangeQuoteCollector
 from app.services.quotes.store import QuoteStore
+from app.services.quotes.subscriptions import select_active_asset_ids
 from app.services.runtime.state import RuntimeState
 
 logger = logging.getLogger(__name__)
@@ -36,27 +36,27 @@ class CollectorSupervisor:
     async def run(self) -> None:
         while not self._stop.is_set():
             snapshot = await self._runtime.snapshot()
-            selected_ids = (
-                snapshot.favorite_ids if snapshot.mode == CollectionMode.FAVORITES else None
-            )
-            active_ids = selected_ids if selected_ids is not None else {
-                asset.id for asset in self._catalog.all()
-            }
+            all_asset_ids = {asset.id for asset in self._catalog.all()}
+            active_ids = select_active_asset_ids(all_asset_ids, snapshot)
             await self._quote_store.clear_except(active_ids)
+
             tasks = []
             for adapter in self._registry.all():
-                symbols = self._catalog.symbols_for(adapter.code, selected_ids)
+                symbols = self._catalog.symbols_for(adapter.code, active_ids)
                 if not symbols:
                     continue
                 collector = ExchangeQuoteCollector(
                     adapter, symbols, self._catalog, self._quote_store, self._runtime
                 )
-                tasks.append(asyncio.create_task(collector.run(), name=f"collector:{adapter.code}"))
+                tasks.append(
+                    asyncio.create_task(collector.run(), name=f"collector:{adapter.code}")
+                )
+
             self._restart.clear()
             wait_restart = asyncio.create_task(self._restart.wait())
             wait_runtime = asyncio.create_task(self._runtime.changed.wait())
             wait_stop = asyncio.create_task(self._stop.wait())
-            done, pending = await asyncio.wait(
+            _, pending = await asyncio.wait(
                 [wait_restart, wait_runtime, wait_stop],
                 return_when=asyncio.FIRST_COMPLETED,
             )

@@ -1,5 +1,6 @@
 from app.db.session import SessionFactory
 from app.repositories.assets import AssetRepository
+from app.repositories.blacklisted_assets import BlacklistedAssetRepository
 from app.repositories.favorites import FavoriteRepository
 from app.repositories.spread_peaks import SpreadPeakRepository
 
@@ -9,19 +10,24 @@ class AssetReadService:
         self,
         assets: AssetRepository,
         favorites: FavoriteRepository,
+        blacklist: BlacklistedAssetRepository,
         peaks: SpreadPeakRepository,
     ) -> None:
         self._assets = assets
         self._favorites = favorites
+        self._blacklist = blacklist
         self._peaks = peaks
 
     async def execute(self, favorites_only: bool = False) -> list[dict]:
         async with SessionFactory() as session:
             assets = await self._assets.list_comparable(session)
             favorite_ids = await self._favorites.list_ids(session)
+            blacklist_ids = await self._blacklist.list_ids(session)
             peaks = await self._peaks.list_best_by_asset(session)
         result = []
         for asset in assets:
+            if asset.id in blacklist_ids:
+                continue
             if favorites_only and asset.id not in favorite_ids:
                 continue
             result.append(
