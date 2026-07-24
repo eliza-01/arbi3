@@ -1,9 +1,23 @@
 const storageKey = "arbi3.ui.settings.v1";
-const defaults = { mode: "all", interval: 1000, search: "", sort: "current", theme: "light" };
+const defaults = {
+  mode: "all",
+  interval: 1000,
+  search: "",
+  sortColumn: "current",
+  sortDirection: "desc",
+  hiddenColumns: [],
+  theme: "light",
+};
 
 function readSettings() {
   try {
-    return { ...defaults, ...JSON.parse(localStorage.getItem(storageKey) || "{}") };
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    const legacySortColumns = { hour: "hour_max", day: "day_max", all_time: "all_time_max" };
+    if (saved.sort && !saved.sortColumn) {
+      saved.sortColumn = legacySortColumns[saved.sort] || saved.sort;
+    }
+    if (!Array.isArray(saved.hiddenColumns)) saved.hiddenColumns = [];
+    return { ...defaults, ...saved };
   } catch {
     return { ...defaults };
   }
@@ -19,11 +33,12 @@ const elements = {
   mode: document.querySelector("#mode"),
   interval: document.querySelector("#interval"),
   search: document.querySelector("#search"),
-  sort: document.querySelector("#sort"),
   theme: document.querySelector("#theme"),
   rows: document.querySelector("#rows"),
   connection: document.querySelector("#connection"),
   template: document.querySelector("#row-template"),
+  sortableHeaders: [...document.querySelectorAll("th[data-sort-key]")],
+  columnToggles: [...document.querySelectorAll("[data-column-toggle]")],
 };
 
 function saveSettings() {
@@ -34,8 +49,12 @@ function applySettings() {
   elements.mode.value = state.settings.mode;
   elements.interval.value = String(state.settings.interval);
   elements.search.value = state.settings.search;
-  elements.sort.value = state.settings.sort;
   document.documentElement.dataset.theme = state.settings.theme;
+  for (const toggle of elements.columnToggles) {
+    toggle.checked = !state.settings.hiddenColumns.includes(toggle.dataset.columnToggle);
+  }
+  applyColumnVisibility();
+  updateSortIndicators();
 }
 
 async function api(path, options = {}) {
@@ -49,9 +68,14 @@ async function api(path, options = {}) {
 
 async function loadAssets() {
   const assets = await api("/api/v1/assets");
+  const receivedIds = new Set();
   for (const asset of assets) {
+    receivedIds.add(asset.id);
     const previous = state.assets.get(asset.id) || {};
     state.assets.set(asset.id, { ...previous, ...asset });
+  }
+  for (const assetId of state.assets.keys()) {
+    if (!receivedIds.has(assetId)) state.assets.delete(assetId);
   }
   render();
 }
@@ -103,9 +127,34 @@ function formatPrice(value) {
   return number.toLocaleString("ru-RU", { maximumSignificantDigits: 7 });
 }
 
-function formatQuote(quote) {
-  if (!quote) return "—";
-  return `${formatPrice(quote.bid)} / ${formatPrice(quote.ask)}`;
+function executionPrice(asset, exchangeCode) {
+  const spread = asset.current_spread;
+  if (!spread) return null;
+  if (spread.buy_exchange === exchangeCode) return Number(spread.buy_price);
+  if (spread.sell_exchange === exchangeCode) return Number(spread.sell_price);
+  return null;
+}
+
+function renderExecutionQuote(cell, asset, exchangeCode) {
+  const spread = asset.current_spread;
+  cell.classList.remove("buy-price", "sell-price", "muted");
+  if (!spread) {
+    cell.textContent = "—";
+    cell.classList.add("muted");
+    return;
+  }
+  if (spread.buy_exchange === exchangeCode) {
+    cell.textContent = `ask ${formatPrice(spread.buy_price)}`;
+    cell.classList.add("buy-price");
+    return;
+  }
+  if (spread.sell_exchange === exchangeCode) {
+    cell.textContent = `bid ${formatPrice(spread.sell_price)}`;
+    cell.classList.add("sell-price");
+    return;
+  }
+  cell.textContent = "—";
+  cell.classList.add("muted");
 }
 
 function formatDelta(value) {
@@ -118,24 +167,76 @@ function deltaClass(value) {
   return Number(value) >= 0 ? "positive" : "negative";
 }
 
+function directionText(asset) {
+  const spread = asset.current_spread;
+  if (!spread) return "—";
+  return `${spread.buy_exchange.toUpperCase()} ask → ${spread.sell_exchange.toUpperCase()} bid`;
+}
+
+function sortValue(item, key) {
+  const values = {
+    symbol: () => item.display_symbol,
+    binance: () => executionPrice(item, "binance"),
+    bybit: () => executionPrice(item, "bybit"),
+    current: () => item.current_spread?.delta_pct,
+    hour_max: () => item.peaks?.hour_pct,
+    hour_min: () => item.peaks?.hour_min_pct,
+    day_max: () => item.peaks?.day_pct,
+    day_min: () => item.peaks?.day_min_pct,
+    all_time_max: () => item.peaks?.all_time_pct,
+    all_time_min: () => item.peaks?.all_time_min_pct,
+    direction: () => directionText(item),
+  };
+  return values[key]?.() ?? null;
+}
+
+function compareValues(left, right, direction) {
+  const leftMissing = left === null || left === undefined;
+  const rightMissing = right === null || right === undefined;
+  if (leftMissing && rightMissing) return 0;
+  if (leftMissing) return 1;
+  if (rightMissing) return -1;
+  if (typeof left === "string" || typeof right === "string") {
+    return String(left).localeCompare(String(right), "ru-RU") * direction;
+  }
+  return (Number(left) - Number(right)) * direction;
+}
+
 function sortedAssets() {
   const query = state.settings.search.trim().toUpperCase();
   let items = [...state.assets.values()];
   if (state.settings.mode === "favorites") items = items.filter((item) => item.is_favorite);
   if (query) items = items.filter((item) => item.display_symbol.includes(query));
-  const getValue = {
-    current: (item) => item.current_spread?.delta_pct ?? -Infinity,
-    hour: (item) => item.peaks?.hour_pct ?? -Infinity,
-    day: (item) => item.peaks?.day_pct ?? -Infinity,
-    all_time: (item) => item.peaks?.all_time_pct ?? -Infinity,
-    symbol: (item) => item.display_symbol,
-  }[state.settings.sort];
-  items.sort((a, b) => {
-    const av = getValue(a);
-    const bv = getValue(b);
-    return typeof av === "string" ? av.localeCompare(bv) : bv - av;
-  });
+  const direction = state.settings.sortDirection === "asc" ? 1 : -1;
+  items.sort((left, right) =>
+    compareValues(
+      sortValue(left, state.settings.sortColumn),
+      sortValue(right, state.settings.sortColumn),
+      direction,
+    ),
+  );
   return items;
+}
+
+function applyColumnVisibility() {
+  const hidden = new Set(state.settings.hiddenColumns);
+  for (const cell of document.querySelectorAll("[data-column]")) {
+    cell.classList.toggle("column-hidden", hidden.has(cell.dataset.column));
+  }
+}
+
+function updateSortIndicators() {
+  for (const header of elements.sortableHeaders) {
+    const active = header.dataset.sortKey === state.settings.sortColumn;
+    header.classList.toggle("sort-active", active);
+    header.setAttribute(
+      "aria-sort",
+      active ? (state.settings.sortDirection === "asc" ? "ascending" : "descending") : "none",
+    );
+    header.querySelector(".sort-indicator").textContent = active
+      ? state.settings.sortDirection === "asc" ? "▲" : "▼"
+      : "";
+  }
 }
 
 function render() {
@@ -147,27 +248,29 @@ function render() {
     favorite.classList.toggle("active", asset.is_favorite);
     favorite.addEventListener("click", () => toggleFavorite(asset));
     row.querySelector(".symbol").textContent = asset.display_symbol;
-    row.querySelector(".binance").textContent = formatQuote(asset.quotes?.binance);
-    row.querySelector(".bybit").textContent = formatQuote(asset.quotes?.bybit);
+    renderExecutionQuote(row.querySelector(".binance"), asset, "binance");
+    renderExecutionQuote(row.querySelector(".bybit"), asset, "bybit");
 
     const values = {
       ".current": asset.current_spread?.delta_pct,
-      ".hour": asset.peaks?.hour_pct,
-      ".day": asset.peaks?.day_pct,
-      ".all-time": asset.peaks?.all_time_pct,
+      ".hour-max": asset.peaks?.hour_pct,
+      ".hour-min": asset.peaks?.hour_min_pct,
+      ".day-max": asset.peaks?.day_pct,
+      ".day-min": asset.peaks?.day_min_pct,
+      ".all-time-max": asset.peaks?.all_time_pct,
+      ".all-time-min": asset.peaks?.all_time_min_pct,
     };
     for (const [selector, value] of Object.entries(values)) {
       const cell = row.querySelector(selector);
       cell.textContent = formatDelta(value);
       cell.classList.add(deltaClass(value));
     }
-    const direction = asset.current_spread
-      ? `${asset.current_spread.buy_exchange} → ${asset.current_spread.sell_exchange}`
-      : "—";
-    row.querySelector(".direction").textContent = direction;
+    row.querySelector(".direction").textContent = directionText(asset);
     fragment.appendChild(row);
   }
   elements.rows.replaceChildren(fragment);
+  applyColumnVisibility();
+  updateSortIndicators();
 }
 
 async function toggleFavorite(asset) {
@@ -175,6 +278,31 @@ async function toggleFavorite(asset) {
   await api(`/api/v1/favorites/${asset.id}`, { method });
   asset.is_favorite = !asset.is_favorite;
   render();
+}
+
+for (const header of elements.sortableHeaders) {
+  header.querySelector("button").addEventListener("click", () => {
+    const key = header.dataset.sortKey;
+    if (state.settings.sortColumn === key) {
+      state.settings.sortDirection = state.settings.sortDirection === "asc" ? "desc" : "asc";
+    } else {
+      state.settings.sortColumn = key;
+      state.settings.sortDirection = ["symbol", "direction"].includes(key) ? "asc" : "desc";
+    }
+    saveSettings();
+    render();
+  });
+}
+
+for (const toggle of elements.columnToggles) {
+  toggle.addEventListener("change", () => {
+    const hidden = new Set(state.settings.hiddenColumns);
+    if (toggle.checked) hidden.delete(toggle.dataset.columnToggle);
+    else hidden.add(toggle.dataset.columnToggle);
+    state.settings.hiddenColumns = [...hidden];
+    saveSettings();
+    applyColumnVisibility();
+  });
 }
 
 elements.mode.addEventListener("change", async () => {
@@ -198,12 +326,6 @@ elements.interval.addEventListener("change", async () => {
 
 elements.search.addEventListener("input", () => {
   state.settings.search = elements.search.value;
-  saveSettings();
-  render();
-});
-
-elements.sort.addEventListener("change", () => {
-  state.settings.sort = elements.sort.value;
   saveSettings();
   render();
 });

@@ -29,10 +29,22 @@ class SpreadWindowRefreshService:
     async def refresh(self) -> None:
         now = datetime.now(UTC)
         async with SessionFactory() as session:
-            hour_rows = await self._buckets.window_maxima(session, now - timedelta(hours=1))
-            day_rows = await self._buckets.window_maxima(session, now - timedelta(days=1))
+            hour_maxima = await self._buckets.window_maxima(
+                session, now - timedelta(hours=1)
+            )
+            hour_minima = await self._buckets.window_minima(
+                session, now - timedelta(hours=1)
+            )
+            day_maxima = await self._buckets.window_maxima(
+                session, now - timedelta(days=1)
+            )
+            day_minima = await self._buckets.window_minima(
+                session, now - timedelta(days=1)
+            )
             await self._peaks.clear_window(session, "hour")
             await self._peaks.clear_window(session, "day")
-            await self._peaks.update_window(session, hour_rows, "hour")
-            await self._peaks.update_window(session, day_rows, "day")
+            await self._peaks.update_window_maximum(session, hour_maxima, "hour")
+            await self._peaks.update_window_minimum(session, hour_minima, "hour")
+            await self._peaks.update_window_maximum(session, day_maxima, "day")
+            await self._peaks.update_window_minimum(session, day_minima, "day")
             await session.commit()

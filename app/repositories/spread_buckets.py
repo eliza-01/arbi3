@@ -14,18 +14,31 @@ class SpreadBucketRepository:
             return
         statement = insert(SpreadBucket).values(rows)
         statement = statement.on_duplicate_key_update(
-            max_delta_pct=func.greatest(
-                SpreadBucket.max_delta_pct, statement.inserted.max_delta_pct
-            ),
             max_delta_abs=func.if_(
-                statement.inserted.max_delta_pct > SpreadBucket.max_delta_pct,
+                statement.inserted.max_delta_pct >= SpreadBucket.max_delta_pct,
                 statement.inserted.max_delta_abs,
                 SpreadBucket.max_delta_abs,
             ),
             observed_at=func.if_(
-                statement.inserted.max_delta_pct > SpreadBucket.max_delta_pct,
+                statement.inserted.max_delta_pct >= SpreadBucket.max_delta_pct,
                 statement.inserted.observed_at,
                 SpreadBucket.observed_at,
+            ),
+            max_delta_pct=func.greatest(
+                SpreadBucket.max_delta_pct, statement.inserted.max_delta_pct
+            ),
+            min_delta_abs=func.if_(
+                statement.inserted.min_delta_pct <= SpreadBucket.min_delta_pct,
+                statement.inserted.min_delta_abs,
+                SpreadBucket.min_delta_abs,
+            ),
+            min_observed_at=func.if_(
+                statement.inserted.min_delta_pct <= SpreadBucket.min_delta_pct,
+                statement.inserted.min_observed_at,
+                SpreadBucket.min_observed_at,
+            ),
+            min_delta_pct=func.least(
+                SpreadBucket.min_delta_pct, statement.inserted.min_delta_pct
             ),
         )
         await session.execute(statement)
@@ -41,7 +54,7 @@ class SpreadBucketRepository:
                 SpreadBucket.asset_id.label("asset_id"),
                 SpreadBucket.buy_exchange_id.label("buy_exchange_id"),
                 SpreadBucket.sell_exchange_id.label("sell_exchange_id"),
-                func.max(SpreadBucket.max_delta_pct).label("max_delta_pct"),
+                func.max(SpreadBucket.max_delta_pct).label("delta_pct"),
             )
             .where(SpreadBucket.bucket_start >= cutoff)
             .group_by(
@@ -64,7 +77,7 @@ class SpreadBucketRepository:
                 (SpreadBucket.asset_id == max_subquery.c.asset_id)
                 & (SpreadBucket.buy_exchange_id == max_subquery.c.buy_exchange_id)
                 & (SpreadBucket.sell_exchange_id == max_subquery.c.sell_exchange_id)
-                & (SpreadBucket.max_delta_pct == max_subquery.c.max_delta_pct),
+                & (SpreadBucket.max_delta_pct == max_subquery.c.delta_pct),
             )
             .where(SpreadBucket.bucket_start >= cutoff)
             .group_by(
@@ -72,6 +85,49 @@ class SpreadBucketRepository:
                 SpreadBucket.buy_exchange_id,
                 SpreadBucket.sell_exchange_id,
                 SpreadBucket.max_delta_pct,
+            )
+        )
+        return list((await session.execute(statement)).all())
+
+    async def window_minima(
+        self, session: AsyncSession, cutoff: datetime
+    ) -> list[tuple[int, int, int, Decimal, datetime]]:
+        min_subquery = (
+            select(
+                SpreadBucket.asset_id.label("asset_id"),
+                SpreadBucket.buy_exchange_id.label("buy_exchange_id"),
+                SpreadBucket.sell_exchange_id.label("sell_exchange_id"),
+                func.min(SpreadBucket.min_delta_pct).label("delta_pct"),
+            )
+            .where(SpreadBucket.bucket_start >= cutoff)
+            .group_by(
+                SpreadBucket.asset_id,
+                SpreadBucket.buy_exchange_id,
+                SpreadBucket.sell_exchange_id,
+            )
+            .subquery()
+        )
+        statement = (
+            select(
+                SpreadBucket.asset_id,
+                SpreadBucket.buy_exchange_id,
+                SpreadBucket.sell_exchange_id,
+                SpreadBucket.min_delta_pct,
+                func.max(SpreadBucket.min_observed_at),
+            )
+            .join(
+                min_subquery,
+                (SpreadBucket.asset_id == min_subquery.c.asset_id)
+                & (SpreadBucket.buy_exchange_id == min_subquery.c.buy_exchange_id)
+                & (SpreadBucket.sell_exchange_id == min_subquery.c.sell_exchange_id)
+                & (SpreadBucket.min_delta_pct == min_subquery.c.delta_pct),
+            )
+            .where(SpreadBucket.bucket_start >= cutoff)
+            .group_by(
+                SpreadBucket.asset_id,
+                SpreadBucket.buy_exchange_id,
+                SpreadBucket.sell_exchange_id,
+                SpreadBucket.min_delta_pct,
             )
         )
         return list((await session.execute(statement)).all())

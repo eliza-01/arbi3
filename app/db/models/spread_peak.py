@@ -25,8 +25,18 @@ class SpreadPeak(Base):
     )
     all_time_delta_pct: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     all_time_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    all_time_min_delta_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    all_time_min_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     day_delta_pct: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     day_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    day_min_delta_pct: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    day_min_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hour_delta_pct: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     hour_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hour_min_delta_pct: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    hour_min_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

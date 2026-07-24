@@ -44,9 +44,12 @@ class SpreadPersistenceService:
                 "buy_exchange_id": item.buy_exchange_id,
                 "sell_exchange_id": item.sell_exchange_id,
                 "bucket_start": item.bucket_start,
-                "max_delta_pct": item.delta_pct,
-                "max_delta_abs": item.delta_abs,
-                "observed_at": item.observed_at,
+                "max_delta_pct": item.max_delta_pct,
+                "max_delta_abs": item.max_delta_abs,
+                "observed_at": item.max_observed_at,
+                "min_delta_pct": item.min_delta_pct,
+                "min_delta_abs": item.min_delta_abs,
+                "min_observed_at": item.min_observed_at,
             }
             for item in items
         ]
@@ -55,8 +58,10 @@ class SpreadPersistenceService:
                 "asset_id": item.asset_id,
                 "buy_exchange_id": item.buy_exchange_id,
                 "sell_exchange_id": item.sell_exchange_id,
-                "all_time_delta_pct": item.delta_pct,
-                "all_time_at": item.observed_at,
+                "all_time_delta_pct": item.max_delta_pct,
+                "all_time_at": item.max_observed_at,
+                "all_time_min_delta_pct": item.min_delta_pct,
+                "all_time_min_at": item.min_observed_at,
                 "updated_at": now,
             }
             for item in items
@@ -64,6 +69,6 @@ class SpreadPersistenceService:
         cutoff = now - timedelta(hours=settings.spread_bucket_retention_hours)
         async with SessionFactory() as session:
             await self._buckets.upsert_many(session, bucket_rows)
-            await self._peaks.upsert_all_time(session, all_time_rows)
+            await self._peaks.upsert_all_time_extrema(session, all_time_rows)
             await self._buckets.delete_older_than(session, cutoff)
             await session.commit()

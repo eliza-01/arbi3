@@ -36,8 +36,11 @@ class AssetReadService:
                         asset.id,
                         {
                             "all_time_pct": None,
+                            "all_time_min_pct": None,
                             "day_pct": None,
+                            "day_min_pct": None,
                             "hour_pct": None,
+                            "hour_min_pct": None,
                             "buy_exchange": None,
                             "sell_exchange": None,
                         },

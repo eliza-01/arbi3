@@ -31,7 +31,7 @@ def calculate_directional_spreads(
                 continue
             buy_quote = quotes[buy_code]
             sell_quote = quotes[sell_code]
-            if buy_quote.ask <= 0:
+            if buy_quote.ask <= 0 or sell_quote.bid <= 0:
                 continue
             delta_abs = sell_quote.bid - buy_quote.ask
             delta_pct = (delta_abs / buy_quote.ask) * Decimal(100)

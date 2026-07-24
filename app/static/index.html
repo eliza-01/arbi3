@@ -10,7 +10,7 @@
   <header class="topbar">
     <div>
       <h1>Arbi3</h1>
-      <p>USDT perpetual futures</p>
+      <p>USDT perpetual futures · покупка ask → продажа bid</p>
     </div>
     <div id="connection" class="status offline">offline</div>
   </header>
@@ -38,16 +38,23 @@
       Поиск
       <input id="search" type="search" placeholder="BTC, ETH...">
     </label>
-    <label>
-      Сортировка
-      <select id="sort">
-        <option value="current">Текущая дельта</option>
-        <option value="hour">Макс. час</option>
-        <option value="day">Макс. сутки</option>
-        <option value="all_time">Макс. всё время</option>
-        <option value="symbol">Символ</option>
-      </select>
-    </label>
+    <details class="column-picker">
+      <summary>Колонки</summary>
+      <div class="column-picker-menu">
+        <label><input type="checkbox" data-column-toggle="favorite"> Избранное</label>
+        <label><input type="checkbox" data-column-toggle="symbol"> Актив</label>
+        <label><input type="checkbox" data-column-toggle="binance"> Binance</label>
+        <label><input type="checkbox" data-column-toggle="bybit"> Bybit</label>
+        <label><input type="checkbox" data-column-toggle="current"> Текущая</label>
+        <label><input type="checkbox" data-column-toggle="hour-max"> Макс. 1 час</label>
+        <label><input type="checkbox" data-column-toggle="hour-min"> Мин. 1 час</label>
+        <label><input type="checkbox" data-column-toggle="day-max"> Макс. 24 часа</label>
+        <label><input type="checkbox" data-column-toggle="day-min"> Мин. 24 часа</label>
+        <label><input type="checkbox" data-column-toggle="all-time-max"> Макс. всё время</label>
+        <label><input type="checkbox" data-column-toggle="all-time-min"> Мин. всё время</label>
+        <label><input type="checkbox" data-column-toggle="direction"> Направление</label>
+      </div>
+    </details>
     <button id="theme" type="button">Тема</button>
   </section>
 
@@ -56,15 +63,40 @@
       <table>
         <thead>
           <tr>
-            <th>★</th>
-            <th>Актив</th>
-            <th>Binance bid / ask</th>
-            <th>Bybit bid / ask</th>
-            <th>Текущая</th>
-            <th>1 час</th>
-            <th>24 часа</th>
-            <th>Всё время</th>
-            <th>Направление</th>
+            <th data-column="favorite" class="align-left">★</th>
+            <th data-column="symbol" class="align-left sortable" data-sort-key="symbol">
+              <button type="button">Актив <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="binance" class="sortable" data-sort-key="binance">
+              <button type="button">Binance <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="bybit" class="sortable" data-sort-key="bybit">
+              <button type="button">Bybit <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="current" class="sortable" data-sort-key="current">
+              <button type="button">Текущая <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="hour-max" class="sortable" data-sort-key="hour_max">
+              <button type="button">Макс. 1 час <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="hour-min" class="sortable" data-sort-key="hour_min">
+              <button type="button">Мин. 1 час <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="day-max" class="sortable" data-sort-key="day_max">
+              <button type="button">Макс. 24 часа <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="day-min" class="sortable" data-sort-key="day_min">
+              <button type="button">Мин. 24 часа <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="all-time-max" class="sortable" data-sort-key="all_time_max">
+              <button type="button">Макс. всё время <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="all-time-min" class="sortable" data-sort-key="all_time_min">
+              <button type="button">Мин. всё время <span class="sort-indicator"></span></button>
+            </th>
+            <th data-column="direction" class="sortable" data-sort-key="direction">
+              <button type="button">Направление <span class="sort-indicator"></span></button>
+            </th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -74,15 +106,18 @@
 
   <template id="row-template">
     <tr>
-      <td><button class="favorite" type="button">☆</button></td>
-      <td class="symbol"></td>
-      <td class="binance price"></td>
-      <td class="bybit price"></td>
-      <td class="current delta"></td>
-      <td class="hour delta"></td>
-      <td class="day delta"></td>
-      <td class="all-time delta"></td>
-      <td class="direction"></td>
+      <td data-column="favorite" class="align-left"><button class="favorite" type="button">☆</button></td>
+      <td data-column="symbol" class="symbol align-left"></td>
+      <td data-column="binance" class="binance price"></td>
+      <td data-column="bybit" class="bybit price"></td>
+      <td data-column="current" class="current delta"></td>
+      <td data-column="hour-max" class="hour-max delta"></td>
+      <td data-column="hour-min" class="hour-min delta"></td>
+      <td data-column="day-max" class="day-max delta"></td>
+      <td data-column="day-min" class="day-min delta"></td>
+      <td data-column="all-time-max" class="all-time-max delta"></td>
+      <td data-column="all-time-min" class="all-time-min delta"></td>
+      <td data-column="direction" class="direction"></td>
     </tr>
   </template>
 

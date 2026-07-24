@@ -31,3 +31,6 @@ class SpreadBucket(Base):
     max_delta_pct: Mapped[Decimal] = mapped_column(Numeric(20, 10))
     max_delta_abs: Mapped[Decimal] = mapped_column(Numeric(32, 12))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    min_delta_pct: Mapped[Decimal] = mapped_column(Numeric(20, 10))
+    min_delta_abs: Mapped[Decimal] = mapped_column(Numeric(32, 12))
+    min_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

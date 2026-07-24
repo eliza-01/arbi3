@@ -6,6 +6,7 @@ from app.services.instruments.catalog import InstrumentCatalog
 from app.services.quotes.store import QuoteStore
 from app.services.runtime.state import RuntimeState
 from app.services.spreads.accumulator import SpreadAccumulator
+from app.services.spreads.arbitrage import select_best_arbitrage
 from app.services.spreads.calculator import calculate_directional_spreads
 
 
@@ -44,12 +45,13 @@ class SpreadEngine:
                 }
                 if asset is None or len(fresh_quotes) < 2:
                     continue
-                spreads = calculate_directional_spreads(asset, fresh_quotes)
-                if not spreads:
+                best = select_best_arbitrage(
+                    calculate_directional_spreads(asset, fresh_quotes)
+                )
+                if best is None:
                     continue
-                for spread in spreads:
-                    await self._accumulator.add(spread)
-                best = max(spreads, key=lambda item: item.delta_pct)
+
+                await self._accumulator.add(best)
                 updates.append(
                     {
                         "asset_id": asset.id,
