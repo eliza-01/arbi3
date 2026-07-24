@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arbi3</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Arbi3</h1>
+      <p>USDT perpetual futures</p>
+    </div>
+    <div id="connection" class="status offline">offline</div>
+  </header>
+
+  <section class="controls">
+    <label>
+      Режим
+      <select id="mode">
+        <option value="all">Все активы</option>
+        <option value="favorites">Только избранные</option>
+      </select>
+    </label>
+    <label>
+      Интервал
+      <select id="interval">
+        <option value="250">250 мс</option>
+        <option value="500">500 мс</option>
+        <option value="1000">1 сек</option>
+        <option value="2000">2 сек</option>
+        <option value="5000">5 сек</option>
+        <option value="10000">10 сек</option>
+      </select>
+    </label>
+    <label class="grow">
+      Поиск
+      <input id="search" type="search" placeholder="BTC, ETH...">
+    </label>
+    <label>
+      Сортировка
+      <select id="sort">
+        <option value="current">Текущая дельта</option>
+        <option value="hour">Макс. час</option>
+        <option value="day">Макс. сутки</option>
+        <option value="all_time">Макс. всё время</option>
+        <option value="symbol">Символ</option>
+      </select>
+    </label>
+    <button id="theme" type="button">Тема</button>
+  </section>
+
+  <main>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>★</th>
+            <th>Актив</th>
+            <th>Binance bid / ask</th>
+            <th>Bybit bid / ask</th>
+            <th>Текущая</th>
+            <th>1 час</th>
+            <th>24 часа</th>
+            <th>Всё время</th>
+            <th>Направление</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <template id="row-template">
+    <tr>
+      <td><button class="favorite" type="button">☆</button></td>
+      <td class="symbol"></td>
+      <td class="binance price"></td>
+      <td class="bybit price"></td>
+      <td class="current delta"></td>
+      <td class="hour delta"></td>
+      <td class="day delta"></td>
+      <td class="all-time delta"></td>
+      <td class="direction"></td>
+    </tr>
+  </template>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
