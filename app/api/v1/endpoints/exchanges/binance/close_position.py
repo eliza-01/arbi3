@@ -21,6 +21,7 @@ async def close_binance_position(
             symbol=payload.symbol,
             direction=payload.direction,
             amount_usdt=payload.amount_usdt,
+            quantity=payload.quantity,
             rounding=payload.rounding,
         )
     except ExchangeTradingError as exc:

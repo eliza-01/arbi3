@@ -73,6 +73,7 @@ class ClosePositionRequest:
     symbol: str
     direction: OrderDirection
     amount_usdt: float | None = None
+    quantity: float | None = None
     rounding: NotionalRounding = "down"
 
 

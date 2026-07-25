@@ -4,25 +4,20 @@ from app.api.dependencies import get_container
 from app.api.exchange_errors import exchange_http_error
 from app.container import Container
 from app.exchanges.trading.errors import ExchangeTradingError
-from app.schemas.exchange_trading import BybitClosePositionRequest
+from app.schemas.exchange_trading import ArbitrageCloseRequest
 
 
-async def close_bybit_position(
-    payload: BybitClosePositionRequest,
+async def close_arbitrage_pair(
+    trade_id: int,
+    payload: ArbitrageCloseRequest,
     container: Container = Depends(get_container),
 ) -> dict:
     if not payload.confirm:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Для исполнения market-ордера передайте confirm=true",
+            detail="Для закрытия двух позиций передайте confirm=true",
         )
     try:
-        return await container.close_bybit_position.execute(
-            symbol=payload.symbol,
-            direction=payload.direction,
-            amount_usdt=payload.amount_usdt,
-            quantity=payload.quantity,
-            rounding=payload.rounding,
-        )
+        return await container.close_arbitrage_pair.execute(trade_id)
     except ExchangeTradingError as exc:
         raise exchange_http_error(exc) from exc

@@ -7,8 +7,10 @@ from app.exchanges.binance.trading_constants import (
     EXCHANGE_INFO,
     NEW_ORDER,
     POSITION_MODE,
+    POSITION_RISK,
 )
 from app.exchanges.trading.models import (
+    ClosePositionRequest,
     ExchangeCredentials,
     ExchangeTradingConfig,
     OpenPositionRequest,
@@ -16,7 +18,8 @@ from app.exchanges.trading.models import (
 
 
 class FakeClient:
-    def __init__(self) -> None:
+    def __init__(self, open_position: bool = False) -> None:
+        self.open_position = open_position
         self.posts: list[tuple[str, dict]] = []
 
     async def close(self) -> None:
@@ -47,6 +50,14 @@ class FakeClient:
     async def signed_get(self, endpoint: str, params=None):
         if endpoint == POSITION_MODE:
             return {"dualSidePosition": False}
+        if endpoint == POSITION_RISK and self.open_position:
+            return [{
+                "symbol": "BTCUSDT",
+                "positionAmt": "0.50",
+                "positionSide": "BOTH",
+                "entryPrice": "100",
+                "unRealizedProfit": "1",
+            }]
         return []
 
     async def signed_post(self, endpoint: str, params=None):
@@ -95,3 +106,15 @@ async def test_open_short_uses_bid_and_sell_market_order() -> None:
     assert order["type"] == "MARKET"
     assert order["quantity"] == "1.01"
     assert result.raw["calculation"]["price"] == 99
+
+
+@pytest.mark.asyncio
+async def test_binance_close_can_use_exact_arbitrage_quantity() -> None:
+    client = FakeClient(open_position=True)
+    await adapter(client).close_position(
+        ClosePositionRequest("BTCUSDT", "long", quantity=0.2),
+    )
+    order = next(payload for endpoint, payload in client.posts if endpoint == NEW_ORDER)
+    assert order["side"] == "SELL"
+    assert order["reduceOnly"] == "true"
+    assert order["quantity"] == "0.2"

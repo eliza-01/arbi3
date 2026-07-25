@@ -142,3 +142,15 @@ async def test_bybit_close_long_is_reduce_only_sell() -> None:
     assert order["reduceOnly"] is True
     assert order["positionIdx"] == 1
     assert order["qty"] == "0.5"
+
+
+@pytest.mark.asyncio
+async def test_bybit_close_can_use_exact_arbitrage_quantity() -> None:
+    client = FakeClient(hedge=True, open_position=True)
+    await adapter(client).close_position(
+        ClosePositionRequest("BTCUSDT", "long", quantity=0.2),
+    )
+    order = next(body for endpoint, body in client.posts if endpoint == CREATE_ORDER)
+    assert order["side"] == "Sell"
+    assert order["reduceOnly"] is True
+    assert order["qty"] == "0.2"

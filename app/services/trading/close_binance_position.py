@@ -20,13 +20,15 @@ class CloseBinancePositionService:
         symbol: str,
         direction: str,
         amount_usdt: float | None,
-        rounding: str | None,
+        quantity: float | None = None,
+        rounding: str | None = None,
     ) -> dict:
         defaults = self._settings_store.load().trading
         request = ClosePositionRequest(
             symbol=symbol,
             direction="short" if direction == "short" else "long",
             amount_usdt=amount_usdt,
+            quantity=quantity,
             rounding="up" if (rounding or defaults.rounding) == "up" else "down",
         )
         async with self._adapter_factory.create() as adapter:

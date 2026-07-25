@@ -7,7 +7,7 @@ def test_local_settings_preserve_secrets_and_hide_them_from_public_response(tmp_
         {
             "binance": {"enabled": True, "api_key": "abcdefgh12345678", "secret_key": "secret"},
             "bybit": {"enabled": True, "api_key": "bybit-key-1234", "secret_key": "bybit-secret"},
-            "trading": {"position_usdt": 25, "leverage": 5, "rounding": "up"},
+            "trading": {"position_usdt": 25, "leverage": 5, "rounding": "up", "insurance_seconds": 7.5},
         },
     )
 
@@ -17,6 +17,7 @@ def test_local_settings_preserve_secrets_and_hide_them_from_public_response(tmp_
     assert settings.trading.position_usdt == 25
     assert settings.trading.leverage == 5
     assert settings.trading.rounding == "up"
+    assert settings.trading.insurance_seconds == 7.5
 
     public = settings.to_dict(hide_secrets=True)
     assert "api_key" not in public["binance"]

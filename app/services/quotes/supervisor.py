@@ -5,7 +5,10 @@ from app.exchanges.registry import ExchangeRegistry
 from app.services.instruments.catalog import InstrumentCatalog
 from app.services.quotes.collector import ExchangeQuoteCollector
 from app.services.quotes.store import QuoteStore
-from app.services.quotes.subscriptions import select_active_asset_ids
+from app.services.quotes.subscriptions import (
+    select_active_asset_ids,
+    select_active_asset_ids_for_exchange,
+)
 from app.services.runtime.state import RuntimeState
 
 logger = logging.getLogger(__name__)
@@ -42,7 +45,10 @@ class CollectorSupervisor:
 
             tasks = []
             for adapter in self._registry.all():
-                symbols = self._catalog.symbols_for(adapter.code, active_ids)
+                exchange_asset_ids = select_active_asset_ids_for_exchange(
+                    all_asset_ids, adapter.code, snapshot
+                )
+                symbols = self._catalog.symbols_for(adapter.code, exchange_asset_ids)
                 if not symbols:
                     continue
                 collector = ExchangeQuoteCollector(

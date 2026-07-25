@@ -16,6 +16,7 @@ async def update_trading_settings(
             position_usdt=payload.position_usdt,
             leverage=payload.leverage,
             rounding=payload.rounding,
+            insurance_seconds=payload.insurance_seconds,
         )
     except ExchangeTradingError as exc:
         raise exchange_http_error(exc) from exc

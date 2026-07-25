@@ -230,7 +230,11 @@ class BybitTradingAdapter:
 
         quantity: float | int = target.quantity
         calculation: VolumeCalculation | None = None
-        if request.amount_usdt is not None:
+        if request.quantity is not None:
+            if request.quantity <= 0:
+                raise ExchangeRequestError("Количество для закрытия должно быть больше 0")
+            quantity = min(float(request.quantity), target.quantity)
+        elif request.amount_usdt is not None:
             previews = await self.preview_volume(normalized, request.amount_usdt, request.rounding)
             calculation = previews["sell" if request.direction == "long" else "buy"]
             quantity = min(float(calculation.quantity), target.quantity)

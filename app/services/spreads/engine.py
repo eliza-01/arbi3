@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 from app.services.broadcast.hub import BroadcastHub
 from app.services.instruments.catalog import InstrumentCatalog
 from app.services.quotes.store import QuoteStore
-from app.services.quotes.subscriptions import select_active_asset_ids
+from app.services.quotes.subscriptions import is_pair_active, select_active_asset_ids
 from app.services.runtime.state import RuntimeState
 from app.services.spreads.accumulator import SpreadAccumulator
-from app.services.spreads.arbitrage import select_best_arbitrage
 from app.services.spreads.calculator import calculate_directional_spreads
+from app.services.spreads.pairs import pair_row_key, select_best_by_exchange_pair
 
 
 class SpreadEngine:
@@ -37,7 +37,7 @@ class SpreadEngine:
                 {asset.id for asset in self._catalog.all()}, runtime
             )
             quote_snapshot = await self._quote_store.snapshot()
-            updates = []
+            updates: list[dict] = []
             now = datetime.now(UTC)
             stale_after_seconds = max(runtime.interval_ms / 1000 * 5, 60)
             for asset_id, quotes in quote_snapshot.items():
@@ -52,35 +52,46 @@ class SpreadEngine:
                 }
                 if asset is None or len(fresh_quotes) < 2:
                     continue
-                best = select_best_arbitrage(
+
+                pair_spreads = select_best_by_exchange_pair(
                     calculate_directional_spreads(asset, fresh_quotes)
                 )
-                if best is None:
-                    continue
-
-                await self._accumulator.add(best)
-                updates.append(
-                    {
-                        "asset_id": asset.id,
-                        "quotes": {
-                            code: {
-                                "bid": float(quote.bid),
-                                "ask": float(quote.ask),
-                                "last": float(quote.last),
-                                "observed_at": quote.observed_at.isoformat(),
-                            }
-                            for code, quote in fresh_quotes.items()
-                        },
-                        "current_spread": {
-                            "buy_exchange": best.buy_exchange,
-                            "sell_exchange": best.sell_exchange,
-                            "buy_price": float(best.buy_price),
-                            "sell_price": float(best.sell_price),
-                            "delta_abs": float(best.delta_abs),
-                            "delta_pct": float(best.delta_pct),
-                        },
+                for (exchange_a, exchange_b), best in pair_spreads.items():
+                    if not is_pair_active(
+                        asset.id, exchange_a, exchange_b, runtime
+                    ):
+                        continue
+                    await self._accumulator.add(best)
+                    pair_quotes = {
+                        code: fresh_quotes[code]
+                        for code in (exchange_a, exchange_b)
+                        if code in fresh_quotes
                     }
-                )
+                    updates.append(
+                        {
+                            "row_key": pair_row_key(asset.id, exchange_a, exchange_b),
+                            "asset_id": asset.id,
+                            "exchange_a": exchange_a,
+                            "exchange_b": exchange_b,
+                            "quotes": {
+                                code: {
+                                    "bid": float(quote.bid),
+                                    "ask": float(quote.ask),
+                                    "last": float(quote.last),
+                                    "observed_at": quote.observed_at.isoformat(),
+                                }
+                                for code, quote in pair_quotes.items()
+                            },
+                            "current_spread": {
+                                "buy_exchange": best.buy_exchange,
+                                "sell_exchange": best.sell_exchange,
+                                "buy_price": float(best.buy_price),
+                                "sell_price": float(best.sell_price),
+                                "delta_abs": float(best.delta_abs),
+                                "delta_pct": float(best.delta_pct),
+                            },
+                        }
+                    )
             if updates:
                 await self._hub.publish(
                     {

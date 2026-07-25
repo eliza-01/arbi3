@@ -28,6 +28,8 @@ const state = {
   settings: readSettings(),
   assets: new Map(),
   blacklist: new Map(),
+  activeTrades: new Map(),
+  pendingTradeRows: new Set(),
   frozenOrder: [],
   socket: null,
   binanceSettings: null,
@@ -83,6 +85,7 @@ const elements = {
   tradingPositionUsdt: document.querySelector("#trading-position-usdt"),
   tradingLeverage: document.querySelector("#trading-leverage"),
   tradingRounding: document.querySelector("#trading-rounding"),
+  tradingInsuranceSeconds: document.querySelector("#trading-insurance-seconds"),
   previewSymbol: document.querySelector("#preview-symbol"),
   volumePreview: document.querySelector("#volume-preview"),
   tradingFormError: document.querySelector("#trading-form-error"),
@@ -93,6 +96,7 @@ const elements = {
   summaryPositionUsdt: document.querySelector("#summary-position-usdt"),
   summaryLeverage: document.querySelector("#summary-leverage"),
   summaryRounding: document.querySelector("#summary-rounding"),
+  summaryInsurance: document.querySelector("#summary-insurance"),
 };
 
 function saveSettings() {
@@ -202,9 +206,11 @@ function renderTradingSettings() {
   elements.summaryPositionUsdt.textContent = formatMoney(settings.position_usdt);
   elements.summaryLeverage.textContent = `${settings.leverage}x`;
   elements.summaryRounding.textContent = settings.rounding === "up" ? "вверх" : "вниз";
+  elements.summaryInsurance.textContent = `${Number(settings.insurance_seconds).toLocaleString("ru-RU")} сек`;
   elements.tradingPositionUsdt.value = settings.position_usdt;
   elements.tradingLeverage.value = settings.leverage;
   elements.tradingRounding.value = settings.rounding;
+  elements.tradingInsuranceSeconds.value = settings.insurance_seconds;
 }
 
 async function loadTradingSettings() {
@@ -218,16 +224,20 @@ function scheduleVolumePreview() {
 }
 
 function favoriteAssets() {
-  return [...state.assets.values()]
-    .filter((asset) => asset.is_favorite)
-    .sort((left, right) => left.display_symbol.localeCompare(right.display_symbol, "ru-RU"));
+  const unique = new Map();
+  for (const row of state.assets.values()) {
+    if (!row.is_favorite || unique.has(row.asset_id)) continue;
+    unique.set(row.asset_id, row);
+  }
+  return [...unique.values()].sort((left, right) =>
+    left.display_symbol.localeCompare(right.display_symbol, "ru-RU"));
 }
 
 function renderFavoriteOptions() {
   const current = elements.previewSymbol.value;
   const favorites = favoriteAssets();
   if (favorites.length === 0) {
-    elements.previewSymbol.innerHTML = '<option value="">Добавьте активы в избранное</option>';
+    elements.previewSymbol.innerHTML = '<option value="">Добавьте связку в избранное</option>';
     elements.previewSymbol.disabled = true;
   } else {
     elements.previewSymbol.disabled = false;
@@ -343,17 +353,24 @@ async function executeTestClose() {
 
 async function loadAssets() {
   const assets = await api("/api/v1/assets");
-  const receivedIds = new Set();
+  const receivedKeys = new Set();
   for (const asset of assets) {
-    receivedIds.add(asset.id);
-    const previous = state.assets.get(asset.id) || {};
-    state.assets.set(asset.id, { ...previous, ...asset });
+    const key = asset.row_key;
+    receivedKeys.add(key);
+    const previous = state.assets.get(key) || {};
+    state.assets.set(key, { ...previous, ...asset });
   }
-  for (const assetId of state.assets.keys()) {
-    if (!receivedIds.has(assetId)) state.assets.delete(assetId);
+  for (const rowKey of state.assets.keys()) {
+    if (!receivedKeys.has(rowKey)) state.assets.delete(rowKey);
   }
-  state.frozenOrder = state.frozenOrder.filter((assetId) => state.assets.has(assetId));
+  state.frozenOrder = state.frozenOrder.filter((rowKey) => state.assets.has(rowKey));
   renderFavoriteOptions();
+  render();
+}
+
+async function loadActiveTrades() {
+  const items = await api("/api/v1/arbitrage/trades");
+  state.activeTrades = new Map(items.map((item) => [item.row_key, item]));
   render();
 }
 
@@ -388,7 +405,7 @@ function connectSocket() {
     const message = JSON.parse(event.data);
     if (message.type !== "quotes") return;
     for (const update of message.items) {
-      const asset = state.assets.get(update.asset_id);
+      const asset = state.assets.get(update.row_key);
       if (!asset) continue;
       asset.quotes = update.quotes;
       asset.current_spread = update.current_spread;
@@ -485,11 +502,19 @@ function compareValues(left, right, direction) {
   return (Number(left) - Number(right)) * direction;
 }
 
+function isPinnedRow(rowKey) {
+  return state.activeTrades.has(rowKey) || state.pendingTradeRows.has(rowKey);
+}
+
 function filteredAssets() {
   const query = state.settings.search.trim().toUpperCase();
-  let items = [...state.assets.values()];
-  if (state.settings.mode === "favorites") items = items.filter((item) => item.is_favorite);
-  if (query) items = items.filter((item) => item.display_symbol.includes(query));
+  const allItems = [...state.assets.values()];
+  let items = allItems.filter((item) => {
+    if (isPinnedRow(item.row_key)) return true;
+    if (state.settings.mode === "favorites" && !item.is_favorite) return false;
+    if (query && !item.display_symbol.includes(query)) return false;
+    return true;
+  });
   return items;
 }
 
@@ -506,24 +531,33 @@ function sortByPreference(items) {
 
 function sortedAssets() {
   const items = filteredAssets();
-  if (!state.settings.sortingPaused) return sortByPreference(items);
+  const pinned = items
+    .filter((item) => isPinnedRow(item.row_key))
+    .sort((left, right) => {
+      const leftTrade = state.activeTrades.get(left.row_key);
+      const rightTrade = state.activeTrades.get(right.row_key);
+      return String(leftTrade?.created_at || "").localeCompare(String(rightTrade?.created_at || ""));
+    });
+  const regular = items.filter((item) => !isPinnedRow(item.row_key));
+
+  if (!state.settings.sortingPaused) return [...pinned, ...sortByPreference(regular)];
 
   if (state.frozenOrder.length === 0) {
-    state.frozenOrder = sortByPreference(items).map((item) => item.id);
+    state.frozenOrder = sortByPreference(regular).map((item) => item.row_key);
   }
 
-  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const itemsByKey = new Map(regular.map((item) => [item.row_key, item]));
   const ordered = [];
-  for (const assetId of state.frozenOrder) {
-    const item = itemsById.get(assetId);
+  for (const rowKey of state.frozenOrder) {
+    const item = itemsByKey.get(rowKey);
     if (!item) continue;
     ordered.push(item);
-    itemsById.delete(assetId);
+    itemsByKey.delete(rowKey);
   }
 
-  const newItems = sortByPreference([...itemsById.values()]);
-  for (const item of newItems) state.frozenOrder.push(item.id);
-  return [...ordered, ...newItems];
+  const newItems = sortByPreference([...itemsByKey.values()]);
+  for (const item of newItems) state.frozenOrder.push(item.row_key);
+  return [...pinned, ...ordered, ...newItems];
 }
 
 function applyColumnVisibility() {
@@ -559,15 +593,42 @@ function render() {
   const fragment = document.createDocumentFragment();
   for (const asset of sortedAssets()) {
     const row = elements.template.content.firstElementChild.cloneNode(true);
-    row.dataset.assetId = String(asset.id);
+    row.dataset.rowKey = asset.row_key;
+    row.dataset.assetId = String(asset.asset_id);
 
     const favorite = row.querySelector(".favorite");
     favorite.textContent = asset.is_favorite ? "★" : "☆";
     favorite.classList.toggle("active", asset.is_favorite);
+    favorite.title = `${asset.display_symbol} · ${asset.exchange_a.toUpperCase()} ↔ ${asset.exchange_b.toUpperCase()}`;
     favorite.addEventListener("click", () => toggleFavorite(asset));
 
     row.querySelector(".blacklist-action").addEventListener("click", () => addToBlacklist(asset));
-    row.querySelector(".symbol").textContent = asset.display_symbol;
+    row.querySelector(".symbol-name").textContent = asset.display_symbol;
+    row.querySelector(".pair-label").textContent = ` ${asset.exchange_a.toUpperCase()} ↔ ${asset.exchange_b.toUpperCase()}`;
+
+    const tradeButton = row.querySelector(".pair-trade-action");
+    const activeTrade = state.activeTrades.get(asset.row_key);
+    const pending = state.pendingTradeRows.has(asset.row_key);
+    if (activeTrade) {
+      row.classList.add("active-trade-row");
+      tradeButton.textContent = "■";
+      tradeButton.classList.add("close-pair-action");
+      tradeButton.title = `Закрыть ${activeTrade.buy_exchange.toUpperCase()} LONG ↔ ${activeTrade.sell_exchange.toUpperCase()} SHORT`;
+      tradeButton.addEventListener("click", () => closePairTrade(activeTrade));
+    } else if (pending) {
+      row.classList.add("active-trade-row");
+      tradeButton.textContent = "…";
+      tradeButton.disabled = true;
+      tradeButton.title = "Открытие обеих ног";
+    } else {
+      tradeButton.textContent = "▶";
+      tradeButton.disabled = !asset.current_spread;
+      tradeButton.title = asset.current_spread
+        ? `Открыть ${directionText(asset)}`
+        : "Нет свежей ask→bid связки";
+      tradeButton.addEventListener("click", () => openPairTrade(asset));
+    }
+
     renderExecutionQuote(row.querySelector(".binance"), asset, "binance");
     renderExecutionQuote(row.querySelector(".bybit"), asset, "bybit");
 
@@ -585,12 +646,94 @@ function render() {
       cell.textContent = formatDelta(value);
       cell.classList.add(deltaClass(value));
     }
-    row.querySelector(".direction").textContent = directionText(asset);
+    const direction = row.querySelector(".direction");
+    direction.textContent = activeTrade
+      ? `ОТКРЫТО: ${activeTrade.buy_exchange.toUpperCase()} LONG ↔ ${activeTrade.sell_exchange.toUpperCase()} SHORT`
+      : directionText(asset);
+    direction.classList.toggle("positive", Boolean(activeTrade));
     fragment.appendChild(row);
   }
   elements.rows.replaceChildren(fragment);
   applyColumnVisibility();
   updateSortIndicators();
+}
+
+async function openPairTrade(asset) {
+  if (!asset.current_spread || state.pendingTradeRows.has(asset.row_key)) return;
+  const spread = asset.current_spread;
+  const settings = state.tradingSettings || await api("/api/v1/trading/settings");
+  const confirmed = confirm(
+    `Открыть арбитражную связку ${asset.display_symbol}?
+
+` +
+    `${spread.buy_exchange.toUpperCase()}: LONG по ask
+` +
+    `${spread.sell_exchange.toUpperCase()}: SHORT по bid
+` +
+    `Объём каждой ноги: ${settings.position_usdt} USDT
+` +
+    `Плечо: ${settings.leverage}x
+` +
+    `Страховка: ${settings.insurance_seconds} сек`,
+  );
+  if (!confirmed) return;
+
+  state.pendingTradeRows.add(asset.row_key);
+  render();
+  try {
+    const trade = await api("/api/v1/arbitrage/trades/open", {
+      method: "POST",
+      body: JSON.stringify({
+        asset_id: asset.asset_id,
+        exchange_a: asset.exchange_a,
+        exchange_b: asset.exchange_b,
+        confirm: true,
+      }),
+    });
+    state.activeTrades.set(trade.row_key, trade);
+    await Promise.all([
+      refreshOneExchange(trade.buy_exchange),
+      refreshOneExchange(trade.sell_exchange),
+    ]);
+  } catch (error) {
+    alert(`Связка не открыта: ${error.message}`);
+    await loadActiveTrades();
+  } finally {
+    state.pendingTradeRows.delete(asset.row_key);
+    render();
+  }
+}
+
+async function closePairTrade(trade) {
+  const confirmed = confirm(
+    `Закрыть арбитражную связку ${trade.display_symbol}?
+
+` +
+    `${trade.buy_exchange.toUpperCase()}: закрыть LONG
+` +
+    `${trade.sell_exchange.toUpperCase()}: закрыть SHORT`,
+  );
+  if (!confirmed) return;
+
+  state.pendingTradeRows.add(trade.row_key);
+  render();
+  try {
+    await api(`/api/v1/arbitrage/trades/${trade.id}/close`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
+    });
+    state.activeTrades.delete(trade.row_key);
+    await Promise.all([
+      refreshOneExchange(trade.buy_exchange),
+      refreshOneExchange(trade.sell_exchange),
+    ]);
+  } catch (error) {
+    alert(`Не удалось закрыть обе ноги: ${error.message}`);
+    await loadActiveTrades();
+  } finally {
+    state.pendingTradeRows.delete(trade.row_key);
+    render();
+  }
 }
 
 function renderBlacklist() {
@@ -626,13 +769,13 @@ function renderBlacklist() {
 async function toggleFavorite(asset) {
   const method = asset.is_favorite ? "DELETE" : "POST";
   try {
-    await api(`/api/v1/favorites/${asset.id}`, { method });
+    await api(`/api/v1/favorites/${asset.asset_id}/${asset.exchange_a}/${asset.exchange_b}`, { method });
     asset.is_favorite = !asset.is_favorite;
     renderFavoriteOptions();
     render();
   } catch (error) {
     console.error(error);
-    alert("Не удалось изменить избранное");
+    alert(`Не удалось изменить избранное: ${error.message}`);
   }
 }
 
@@ -643,9 +786,11 @@ async function addToBlacklist(asset) {
   if (!confirmed) return;
 
   try {
-    await api(`/api/v1/blacklist/${asset.id}`, { method: "POST" });
-    state.assets.delete(asset.id);
-    state.frozenOrder = state.frozenOrder.filter((assetId) => assetId !== asset.id);
+    await api(`/api/v1/blacklist/${asset.asset_id}`, { method: "POST" });
+    for (const [rowKey, row] of state.assets) {
+      if (row.asset_id === asset.asset_id) state.assets.delete(rowKey);
+    }
+    state.frozenOrder = state.frozenOrder.filter((rowKey) => state.assets.has(rowKey));
     renderFavoriteOptions();
     await loadBlacklist();
     render();
@@ -693,11 +838,13 @@ for (const toggle of elements.columnToggles) {
 elements.sortPause.addEventListener("click", () => {
   const nextPaused = !state.settings.sortingPaused;
   if (nextPaused) {
-    const visibleOrder = [...elements.rows.querySelectorAll("tr[data-asset-id]")]
-      .map((row) => Number(row.dataset.assetId));
+    const visibleOrder = [...elements.rows.querySelectorAll("tr[data-row-key]")]
+      .map((row) => row.dataset.rowKey)
+      .filter((rowKey) => !isPinnedRow(rowKey));
     state.frozenOrder = visibleOrder.length
       ? visibleOrder
-      : sortByPreference(filteredAssets()).map((item) => item.id);
+      : sortByPreference(filteredAssets().filter((item) => !isPinnedRow(item.row_key)))
+        .map((item) => item.row_key);
   } else {
     state.frozenOrder = [];
   }
@@ -818,6 +965,7 @@ elements.tradingForm.addEventListener("submit", async (event) => {
         position_usdt: Number(elements.tradingPositionUsdt.value),
         leverage: Number(elements.tradingLeverage.value),
         rounding: elements.tradingRounding.value,
+        insurance_seconds: Number(elements.tradingInsuranceSeconds.value),
       }),
     });
     renderTradingSettings();
@@ -837,7 +985,8 @@ await Promise.all([
   loadExchangeSettings("binance"),
   loadExchangeSettings("bybit"),
   loadTradingSettings(),
+  loadActiveTrades(),
 ]);
 await Promise.all([applyRuntimeSettings(), refreshExchangeOverview()]);
 connectSocket();
-setInterval(() => Promise.all([loadAssets(), loadBlacklist()]), 60000);
+setInterval(() => Promise.all([loadAssets(), loadBlacklist(), loadActiveTrades()]), 60000);

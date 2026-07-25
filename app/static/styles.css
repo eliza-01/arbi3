@@ -117,3 +117,13 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .short-action { color: var(--sell); border-color: color-mix(in srgb, var(--sell) 55%, var(--line)); }
 .action-status { min-height: 20px; font-size: 13px; line-height: 1.45; }
 @media (max-width: 720px) { .trade-test-actions { grid-template-columns: 1fr; } }
+.symbol { text-align: left; }
+.symbol > * { vertical-align: middle; }
+.symbol .symbol-name { margin-left: 7px; }
+.symbol-name { font-weight: 650; }
+.pair-label { font-size: 11px; font-weight: 500; }
+.pair-trade-action { width: 28px; height: 28px; padding: 0; border-radius: 50%; color: var(--positive); border-color: color-mix(in srgb, var(--positive) 55%, var(--line)); background: color-mix(in srgb, var(--positive) 8%, var(--panel)); }
+.pair-trade-action:hover:not(:disabled) { background: color-mix(in srgb, var(--positive) 18%, var(--panel)); }
+.pair-trade-action.close-pair-action { color: var(--negative); border-color: color-mix(in srgb, var(--negative) 55%, var(--line)); background: color-mix(in srgb, var(--negative) 8%, var(--panel)); }
+.active-trade-row td { background: color-mix(in srgb, var(--positive) 8%, var(--panel)); border-bottom-color: color-mix(in srgb, var(--positive) 35%, var(--line)); }
+.active-trade-row .symbol-name::after { content: " · открыто"; color: var(--positive); font-size: 11px; font-weight: 650; }

@@ -187,3 +187,55 @@ class SpreadPeakRepository:
             ):
                 current["hour_min_pct"] = float(peak.hour_min_delta_pct)
         return best
+
+    async def list_best_by_pair(
+        self,
+        session: AsyncSession,
+    ) -> dict[tuple[int, str, str], dict]:
+        peaks = list((await session.scalars(select(SpreadPeak))).all())
+        exchange_codes = {
+            exchange.id: exchange.code
+            for exchange in (await session.scalars(select(Exchange))).all()
+        }
+        result: dict[tuple[int, str, str], dict] = {}
+        for peak in peaks:
+            buy_code = exchange_codes.get(peak.buy_exchange_id)
+            sell_code = exchange_codes.get(peak.sell_exchange_id)
+            if not buy_code or not sell_code:
+                continue
+            exchange_a, exchange_b = sorted((buy_code, sell_code))
+            key = (peak.asset_id, exchange_a, exchange_b)
+            current = result.setdefault(
+                key,
+                {
+                    "all_time_pct": None,
+                    "all_time_min_pct": None,
+                    "day_pct": None,
+                    "day_min_pct": None,
+                    "hour_pct": None,
+                    "hour_min_pct": None,
+                },
+            )
+            _merge_max(current, "all_time_pct", peak.all_time_delta_pct)
+            _merge_min(current, "all_time_min_pct", peak.all_time_min_delta_pct)
+            _merge_max(current, "day_pct", peak.day_delta_pct)
+            _merge_min(current, "day_min_pct", peak.day_min_delta_pct)
+            _merge_max(current, "hour_pct", peak.hour_delta_pct)
+            _merge_min(current, "hour_min_pct", peak.hour_min_delta_pct)
+        return result
+
+
+def _merge_max(target: dict, key: str, value: Decimal | None) -> None:
+    if value is None:
+        return
+    number = float(value)
+    if target[key] is None or number > target[key]:
+        target[key] = number
+
+
+def _merge_min(target: dict, key: str, value: Decimal | None) -> None:
+    if value is None:
+        return
+    number = float(value)
+    if target[key] is None or number < target[key]:
+        target[key] = number

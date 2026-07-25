@@ -12,12 +12,12 @@
 - текущая исполнимая дельта по лучшим bid/ask;
 - максимальная дельта за всё время, 24 часа и 1 час;
 - минутные максимумы в MySQL вместо хранения каждого тика;
-- избранные активы и чёрный список в MySQL;
+- избранные связки `актив + пара бирж` и чёрный список в MySQL;
 - исключение чёрного списка из WebSocket/polling-подписок;
 - пауза динамической сортировки без остановки обновления цен;
 - настройки интерфейса в `localStorage` браузера;
 - ручное подключение Binance и Bybit USDT perpetual, проверка состояния и чтение USDT-баланса;
-- ручные market-операции открытия/закрытия, установка плеча и расчёт количества по сумме USDT;
+- ручные market-операции и открытие арбитражной связки LONG по ask + SHORT по bid;
 - локальные ключи Binance/Bybit и торговые параметры в `local_data/settings.json`;
 - FastAPI, MySQL 8.4, phpMyAdmin и статический интерфейс в Docker Compose.
 
@@ -43,11 +43,13 @@ docker compose up --build
 
 ## Биржевые аккаунты и ручная торговля
 
-Автоматическая торговля отсутствует. Ручки открытия и закрытия отправляют market-ордер
-только при явном `confirm=true`. Количество рассчитывается по `ask` для LONG и по `bid` для SHORT с учётом
-биржевого шага количества, минимального notional и выбранного округления. В торговой
-модалке доступны ручные тестовые LONG/SHORT и полное закрытие позиций по выбранному
-избранному активу.
+Автоматическая торговля отсутствует. Открытие позиции или арбитражной связки выполняется
+только вручную и при явном `confirm=true`. Количество рассчитывается по `ask` для LONG и
+по `bid` для SHORT с учётом шага количества, минимального notional и округления.
+
+Кнопка слева от актива параллельно открывает LONG на бирже покупки и SHORT на бирже
+продажи. Активная строка закрепляется сверху. Если обе ноги не подтверждены за время
+`insurance_seconds`, сервис закрывает фактически открытую часть связки.
 
 Ключи не сохраняются в MySQL и не возвращаются через API. Они лежат локально в
 `local_data/settings.json`, который подключён к контейнеру отдельным volume.
@@ -56,8 +58,8 @@ docker compose up --build
 
 - `GET /api/v1/assets`
 - `GET /api/v1/favorites`
-- `POST /api/v1/favorites/{asset_id}`
-- `DELETE /api/v1/favorites/{asset_id}`
+- `POST /api/v1/favorites/{asset_id}/{exchange_a}/{exchange_b}`
+- `DELETE /api/v1/favorites/{asset_id}/{exchange_a}/{exchange_b}`
 - `GET /api/v1/blacklist`
 - `POST /api/v1/blacklist/{asset_id}`
 - `DELETE /api/v1/blacklist/{asset_id}`
@@ -102,3 +104,9 @@ docker compose up --build
 - `PUT /api/v1/exchanges/bybit/leverage`
 - `POST /api/v1/exchanges/bybit/positions/open`
 - `POST /api/v1/exchanges/bybit/positions/close`
+
+### Ручная арбитражная связка
+
+- `GET /api/v1/arbitrage/trades`
+- `POST /api/v1/arbitrage/trades/open`
+- `POST /api/v1/arbitrage/trades/{trade_id}/close`

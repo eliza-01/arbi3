@@ -23,7 +23,7 @@ class TradingSettings:
     position_usdt: float = 10.0
     leverage: int = 1
     rounding: RoundingMode = "down"
-    insurance_seconds: float = 0.0
+    insurance_seconds: float = 5.0
 
 
 @dataclass(slots=True)
@@ -68,9 +68,11 @@ def settings_from_dict(data: dict[str, Any]) -> LocalSettings:
             position_usdt=_positive_float(trading_raw.get("position_usdt"), 10.0),
             leverage=_bounded_int(trading_raw.get("leverage"), 1, 1, 125),
             rounding=rounding,
-            insurance_seconds=_non_negative_float(
+            insurance_seconds=_bounded_float(
                 trading_raw.get("insurance_seconds"),
-                0.0,
+                5.0,
+                1.0,
+                60.0,
             ),
         ),
     )
@@ -128,3 +130,13 @@ def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         return default
     return min(max(parsed, minimum), maximum)
+
+
+def _bounded_float(value: Any, default: float, minimum: float, maximum: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed < minimum or parsed > maximum:
+        return default
+    return parsed

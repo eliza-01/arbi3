@@ -26,13 +26,18 @@ from app.services.trading.preview_volume import PreviewBinanceVolumeService
 from app.services.trading.preview_bybit_volume import PreviewBybitVolumeService
 from app.services.trading.set_binance_leverage import SetBinanceLeverageService
 from app.services.trading.set_bybit_leverage import SetBybitLeverageService
+from app.services.trading.adapter_registry import TradingAdapterRegistry
 from app.services.trading.update_settings import UpdateTradingSettingsService
+from app.repositories.arbitrage_trades import ArbitrageTradeRepository
 from app.repositories.assets import AssetRepository
 from app.repositories.blacklisted_assets import BlacklistedAssetRepository
 from app.repositories.exchanges import ExchangeRepository
-from app.repositories.favorites import FavoriteRepository
+from app.repositories.favorite_pairs import FavoritePairRepository
 from app.repositories.spread_buckets import SpreadBucketRepository
 from app.repositories.spread_peaks import SpreadPeakRepository
+from app.services.arbitrage.close_pair import CloseArbitragePairService
+from app.services.arbitrage.list_active import ListActiveArbitrageTradesService
+from app.services.arbitrage.open_pair import OpenArbitragePairService
 from app.services.assets.read import AssetReadService
 from app.services.blacklist.read import BlacklistReadService
 from app.services.broadcast.hub import BroadcastHub
@@ -119,9 +124,14 @@ class Container:
             self.local_settings_store,
             self.bybit_trading_adapter_factory,
         )
+        self.trading_adapter_registry = TradingAdapterRegistry(
+            self.binance_trading_adapter_factory,
+            self.bybit_trading_adapter_factory,
+        )
         self.exchange_repository = ExchangeRepository()
         self.asset_repository = AssetRepository()
-        self.favorite_repository = FavoriteRepository()
+        self.favorite_pair_repository = FavoritePairRepository()
+        self.arbitrage_trade_repository = ArbitrageTradeRepository()
         self.blacklisted_asset_repository = BlacklistedAssetRepository()
         self.spread_bucket_repository = SpreadBucketRepository()
         self.spread_peak_repository = SpreadPeakRepository()
@@ -139,10 +149,29 @@ class Container:
             self.catalog,
         )
         self.asset_read = AssetReadService(
-            self.asset_repository,
-            self.favorite_repository,
+            self.catalog,
+            self.favorite_pair_repository,
             self.blacklisted_asset_repository,
             self.spread_peak_repository,
+        )
+        self.arbitrage_trade_lock = asyncio.Lock()
+        self.list_active_arbitrage_trades = ListActiveArbitrageTradesService(
+            self.arbitrage_trade_repository,
+            self.catalog,
+        )
+        self.open_arbitrage_pair = OpenArbitragePairService(
+            catalog=self.catalog,
+            quote_store=self.quote_store,
+            settings_store=self.local_settings_store,
+            adapters=self.trading_adapter_registry,
+            repository=self.arbitrage_trade_repository,
+            lock=self.arbitrage_trade_lock,
+        )
+        self.close_arbitrage_pair = CloseArbitragePairService(
+            catalog=self.catalog,
+            adapters=self.trading_adapter_registry,
+            repository=self.arbitrage_trade_repository,
+            lock=self.arbitrage_trade_lock,
         )
         self.blacklist_read = BlacklistReadService(
             self.blacklisted_asset_repository,
@@ -174,7 +203,7 @@ class Container:
     async def start(self) -> None:
         await self.instrument_sync.execute()
         async with SessionFactory() as session:
-            favorites = await self.favorite_repository.list_ids(session)
+            favorites = await self.favorite_pair_repository.list_keys(session)
             blacklist = await self.blacklisted_asset_repository.list_ids(session)
         await self.runtime.set_favorites(favorites)
         await self.runtime.set_blacklist(blacklist)

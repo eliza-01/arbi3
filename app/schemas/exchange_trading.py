@@ -50,6 +50,7 @@ class ExchangeClosePositionRequest(BaseModel):
     symbol: str = Field(min_length=1)
     direction: Literal["long", "short"]
     amount_usdt: float | None = Field(default=None, gt=0)
+    quantity: float | None = Field(default=None, gt=0)
     rounding: Literal["down", "up"] | None = None
     confirm: bool = False
 
@@ -66,3 +67,15 @@ class TradingSettingsUpdateRequest(BaseModel):
     position_usdt: float = Field(gt=0)
     leverage: int = Field(ge=1, le=125)
     rounding: Literal["down", "up"]
+    insurance_seconds: float = Field(ge=1, le=60)
+
+
+class ArbitrageOpenRequest(BaseModel):
+    asset_id: int = Field(gt=0)
+    exchange_a: str = Field(min_length=1, max_length=32)
+    exchange_b: str = Field(min_length=1, max_length=32)
+    confirm: bool = False
+
+
+class ArbitrageCloseRequest(BaseModel):
+    confirm: bool = False
