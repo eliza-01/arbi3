@@ -30,6 +30,11 @@ const state = {
   blacklist: new Map(),
   frozenOrder: [],
   socket: null,
+  binanceSettings: null,
+  binanceStatus: null,
+  binanceBalance: null,
+  tradingSettings: null,
+  previewTimer: null,
 };
 
 const elements = {
@@ -45,6 +50,30 @@ const elements = {
   blacklistItems: document.querySelector("#blacklist-items"),
   sortableHeaders: [...document.querySelectorAll("th[data-sort-key]")],
   columnToggles: [...document.querySelectorAll("[data-column-toggle]")],
+  refreshExchanges: document.querySelector("#refresh-exchanges"),
+  configureBinance: document.querySelector("#configure-binance"),
+  configureTrading: document.querySelector("#configure-trading"),
+  binanceState: document.querySelector("#binance-state"),
+  binanceBalance: document.querySelector("#binance-balance"),
+  binanceMessage: document.querySelector("#binance-message"),
+  binanceDialog: document.querySelector("#binance-dialog"),
+  binanceForm: document.querySelector("#binance-form"),
+  binanceApiKey: document.querySelector("#binance-api-key"),
+  binanceSecretKey: document.querySelector("#binance-secret-key"),
+  binanceConfigHint: document.querySelector("#binance-config-hint"),
+  binanceFormError: document.querySelector("#binance-form-error"),
+  disconnectBinance: document.querySelector("#disconnect-binance"),
+  tradingDialog: document.querySelector("#trading-dialog"),
+  tradingForm: document.querySelector("#trading-form"),
+  tradingPositionUsdt: document.querySelector("#trading-position-usdt"),
+  tradingLeverage: document.querySelector("#trading-leverage"),
+  tradingRounding: document.querySelector("#trading-rounding"),
+  previewSymbol: document.querySelector("#preview-symbol"),
+  volumePreview: document.querySelector("#volume-preview"),
+  tradingFormError: document.querySelector("#trading-form-error"),
+  summaryPositionUsdt: document.querySelector("#summary-position-usdt"),
+  summaryLeverage: document.querySelector("#summary-leverage"),
+  summaryRounding: document.querySelector("#summary-rounding"),
 };
 
 function saveSettings() {
@@ -69,8 +98,113 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
   });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { detail: text }; }
+  if (!response.ok) {
+    const detail = typeof data.detail === "string" ? data.detail : data.detail?.message;
+    throw new Error(detail || data.message || `HTTP ${response.status}`);
+  }
+  return data;
+}
+
+function setFormError(element, error = null) {
+  element.hidden = !error;
+  element.textContent = error ? String(error.message || error) : "";
+}
+
+function formatMoney(value, currency = "USDT") {
+  if (value === undefined || value === null) return "—";
+  return `${Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} ${currency}`;
+}
+
+function renderBinanceOverview() {
+  const status = state.binanceStatus;
+  elements.binanceState.className = "status neutral";
+  if (!status) {
+    elements.binanceState.textContent = "не проверено";
+    elements.binanceMessage.textContent = "—";
+    elements.binanceBalance.textContent = "—";
+    return;
+  }
+  const labels = { connected: "подключено", disabled: "отключено", not_configured: "не настроено", error: "ошибка" };
+  elements.binanceState.textContent = labels[status.state] || status.state;
+  elements.binanceState.className = `status ${status.state === "connected" ? "online" : status.state === "error" ? "offline" : "neutral"}`;
+  elements.binanceMessage.textContent = status.message || "—";
+  elements.binanceBalance.textContent = state.binanceBalance
+    ? `доступно ${formatMoney(state.binanceBalance.available, state.binanceBalance.currency)} · equity ${formatMoney(state.binanceBalance.equity, state.binanceBalance.currency)}`
+    : "—";
+}
+
+async function loadBinanceSettings() {
+  state.binanceSettings = await api("/api/v1/exchanges/binance/settings");
+  const settings = state.binanceSettings;
+  elements.binanceConfigHint.textContent = settings.api_key_configured
+    ? `Ключ сохранён: ${settings.api_key_masked || "***"}`
+    : "API-ключи ещё не сохранены";
+  elements.disconnectBinance.disabled = !settings.enabled;
+}
+
+async function refreshExchangeOverview() {
+  elements.refreshExchanges.disabled = true;
+  try {
+    state.binanceStatus = await api("/api/v1/exchanges/binance/status");
+    state.binanceBalance = null;
+    if (state.binanceStatus.state === "connected") {
+      try {
+        state.binanceBalance = await api("/api/v1/exchanges/binance/balance");
+      } catch (error) {
+        state.binanceStatus = { ...state.binanceStatus, state: "error", message: error.message };
+      }
+    }
+  } catch (error) {
+    state.binanceStatus = { state: "error", message: error.message };
+    state.binanceBalance = null;
+  } finally {
+    renderBinanceOverview();
+    elements.refreshExchanges.disabled = false;
+  }
+}
+
+function renderTradingSettings() {
+  const settings = state.tradingSettings;
+  if (!settings) return;
+  elements.summaryPositionUsdt.textContent = formatMoney(settings.position_usdt);
+  elements.summaryLeverage.textContent = `${settings.leverage}x`;
+  elements.summaryRounding.textContent = settings.rounding === "up" ? "вверх" : "вниз";
+  elements.tradingPositionUsdt.value = settings.position_usdt;
+  elements.tradingLeverage.value = settings.leverage;
+  elements.tradingRounding.value = settings.rounding;
+}
+
+async function loadTradingSettings() {
+  state.tradingSettings = await api("/api/v1/trading/settings");
+  renderTradingSettings();
+}
+
+function scheduleVolumePreview() {
+  clearTimeout(state.previewTimer);
+  state.previewTimer = setTimeout(loadVolumePreview, 300);
+}
+
+async function loadVolumePreview() {
+  const symbol = elements.previewSymbol.value.trim().toUpperCase();
+  const amount = Number(elements.tradingPositionUsdt.value);
+  const rounding = elements.tradingRounding.value;
+  if (!symbol || !Number.isFinite(amount) || amount <= 0) {
+    elements.volumePreview.textContent = "Введите актив и объём";
+    return;
+  }
+  elements.volumePreview.textContent = "Расчёт…";
+  try {
+    const query = new URLSearchParams({ symbol, amount_usdt: String(amount), rounding });
+    const data = await api(`/api/v1/exchanges/binance/volume-preview?${query}`);
+    elements.volumePreview.classList.remove("muted");
+    elements.volumePreview.innerHTML = `Покупка: <strong>${data.buy.quantity}</strong> (${formatMoney(data.buy.rounded_amount_usdt)}) · Продажа: <strong>${data.sell.quantity}</strong> (${formatMoney(data.sell.rounded_amount_usdt)})`;
+  } catch (error) {
+    elements.volumePreview.classList.add("muted");
+    elements.volumePreview.textContent = error.message;
+  }
 }
 
 async function loadAssets() {
@@ -467,8 +601,76 @@ elements.theme.addEventListener("click", () => {
   saveSettings();
 });
 
+elements.refreshExchanges.addEventListener("click", refreshExchangeOverview);
+elements.configureBinance.addEventListener("click", async () => {
+  setFormError(elements.binanceFormError);
+  elements.binanceApiKey.value = "";
+  elements.binanceSecretKey.value = "";
+  await loadBinanceSettings();
+  elements.binanceDialog.showModal();
+});
+elements.binanceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setFormError(elements.binanceFormError);
+  try {
+    await api("/api/v1/exchanges/binance/connect", {
+      method: "POST",
+      body: JSON.stringify({
+        api_key: elements.binanceApiKey.value || null,
+        secret_key: elements.binanceSecretKey.value || null,
+      }),
+    });
+    elements.binanceDialog.close();
+    await Promise.all([loadBinanceSettings(), refreshExchangeOverview()]);
+  } catch (error) {
+    setFormError(elements.binanceFormError, error);
+  }
+});
+elements.disconnectBinance.addEventListener("click", async () => {
+  setFormError(elements.binanceFormError);
+  try {
+    await api("/api/v1/exchanges/binance/disconnect", { method: "POST" });
+    elements.binanceDialog.close();
+    await Promise.all([loadBinanceSettings(), refreshExchangeOverview()]);
+  } catch (error) {
+    setFormError(elements.binanceFormError, error);
+  }
+});
+
+elements.configureTrading.addEventListener("click", async () => {
+  setFormError(elements.tradingFormError);
+  await loadTradingSettings();
+  elements.tradingDialog.showModal();
+  scheduleVolumePreview();
+});
+for (const input of [elements.tradingPositionUsdt, elements.tradingRounding, elements.previewSymbol]) {
+  input.addEventListener("input", scheduleVolumePreview);
+  input.addEventListener("change", scheduleVolumePreview);
+}
+elements.tradingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setFormError(elements.tradingFormError);
+  try {
+    state.tradingSettings = await api("/api/v1/trading/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        position_usdt: Number(elements.tradingPositionUsdt.value),
+        leverage: Number(elements.tradingLeverage.value),
+        rounding: elements.tradingRounding.value,
+      }),
+    });
+    renderTradingSettings();
+    elements.tradingDialog.close();
+  } catch (error) {
+    setFormError(elements.tradingFormError, error);
+  }
+});
+for (const button of document.querySelectorAll("[data-close-dialog]")) {
+  button.addEventListener("click", () => document.querySelector(`#${button.dataset.closeDialog}`).close());
+}
+
 applySettings();
-await Promise.all([loadAssets(), loadBlacklist()]);
-await applyRuntimeSettings();
+await Promise.all([loadAssets(), loadBlacklist(), loadBinanceSettings(), loadTradingSettings()]);
+await Promise.all([applyRuntimeSettings(), refreshExchangeOverview()]);
 connectSocket();
 setInterval(() => Promise.all([loadAssets(), loadBlacklist()]), 60000);

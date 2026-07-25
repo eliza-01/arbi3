@@ -73,3 +73,42 @@ tr:last-child td { border-bottom: 0; }
 .sell-price { color: var(--sell); font-weight: 650; }
 .column-hidden { display: none; }
 @media (max-width: 720px) { .topbar, .controls, main { padding-left: 12px; padding-right: 12px; } }
+
+.topbar-label { color: var(--muted); font-size: 13px; margin-right: 6px; }
+.status.neutral { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); }
+.overview-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, .8fr); gap: 14px; padding: 16px 24px 0; }
+.overview-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.section-heading { display: flex; align-items: start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.section-heading h2, .modal-heading h2 { margin: 0; font-size: 16px; }
+.section-heading p, .modal-heading p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.exchange-list { display: grid; gap: 8px; }
+.exchange-row { display: grid; grid-template-columns: minmax(130px, .6fr) minmax(240px, 1.4fr) auto; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.exchange-row strong { display: inline-block; margin-bottom: 5px; }
+.exchange-values { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+.disabled-row { opacity: .7; }
+.trading-summary { display: flex; flex-wrap: wrap; gap: 12px 22px; padding-top: 5px; font-size: 14px; }
+.modal { width: min(560px, calc(100vw - 24px)); border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--panel); color: var(--text); box-shadow: 0 24px 64px rgb(0 0 0 / 30%); }
+.modal::backdrop { background: rgb(0 0 0 / 45%); }
+.modal form { display: grid; gap: 14px; padding: 18px; }
+.modal label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.modal input, .modal select { width: 100%; }
+.modal-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.icon-button { border: 0; background: transparent; font-size: 22px; line-height: 1; padding: 3px 7px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid small { color: var(--muted); }
+.preview-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.preview-values { font-size: 13px; line-height: 1.5; }
+.form-error { padding: 9px 10px; border-radius: 8px; color: var(--negative); background: color-mix(in srgb, var(--negative) 10%, transparent); font-size: 13px; }
+.modal-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.modal-actions > div { display: flex; gap: 8px; }
+.split-actions { justify-content: space-between; }
+button.primary { color: white; background: #1864ab; border-color: #1864ab; }
+button.danger { color: var(--negative); border-color: color-mix(in srgb, var(--negative) 55%, var(--line)); }
+button:disabled { cursor: not-allowed; opacity: .55; }
+@media (max-width: 900px) { .overview-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) {
+  .overview-grid { padding-left: 12px; padding-right: 12px; }
+  .exchange-row { grid-template-columns: 1fr auto; }
+  .exchange-values { grid-column: 1 / -1; }
+  .form-grid { grid-template-columns: 1fr; }
+}

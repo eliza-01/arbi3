@@ -12,8 +12,57 @@
       <h1>Arbi3</h1>
       <p>USDT perpetual futures · покупка ask → продажа bid</p>
     </div>
-    <div id="connection" class="status offline">offline</div>
+    <div><span class="topbar-label">Поток котировок</span> <span id="connection" class="status offline">offline</span></div>
   </header>
+
+  <section class="overview-grid">
+    <article class="overview-card">
+      <div class="section-heading">
+        <div>
+          <h2>Подключение к биржам</h2>
+          <p>Обновляется вручную или после изменения настроек</p>
+        </div>
+        <button id="refresh-exchanges" type="button">Обновить</button>
+      </div>
+      <div class="exchange-list">
+        <div class="exchange-row">
+          <div>
+            <strong>Binance</strong>
+            <div><span id="binance-state" class="status neutral">не проверено</span></div>
+          </div>
+          <div class="exchange-values">
+            <span>Баланс: <strong id="binance-balance">—</strong></span>
+            <span id="binance-message" class="muted">—</span>
+          </div>
+          <button id="configure-binance" type="button">Настроить</button>
+        </div>
+        <div class="exchange-row disabled-row">
+          <div>
+            <strong>Bybit</strong>
+            <div><span class="status neutral">заглушка</span></div>
+          </div>
+          <div class="exchange-values muted">Подключение аккаунта будет добавлено позже</div>
+          <button type="button" disabled>Настроить</button>
+        </div>
+      </div>
+    </article>
+
+    <article class="overview-card">
+      <div class="section-heading">
+        <div>
+          <h2>Параметры торговли</h2>
+          <p>Только ручные операции</p>
+        </div>
+        <button id="configure-trading" type="button">Настроить</button>
+      </div>
+      <div id="trading-summary" class="trading-summary">
+        <span>Объём: <strong id="summary-position-usdt">—</strong></span>
+        <span>Плечо: <strong id="summary-leverage">—</strong></span>
+        <span>Округление: <strong id="summary-rounding">—</strong></span>
+        <span>Страховка: <strong>заглушка</strong></span>
+      </div>
+    </article>
+  </section>
 
   <section class="controls">
     <label>
@@ -110,6 +159,49 @@
       </table>
     </div>
   </main>
+
+  <dialog id="binance-dialog" class="modal">
+    <form id="binance-form" method="dialog">
+      <div class="modal-heading">
+        <div><h2>Binance</h2><p id="binance-config-hint" class="muted">Настройка API-доступа</p></div>
+        <button class="icon-button" type="button" data-close-dialog="binance-dialog" aria-label="Закрыть">×</button>
+      </div>
+      <label>API key<input id="binance-api-key" type="password" autocomplete="off" placeholder="Оставьте пустым, чтобы не менять"></label>
+      <label>Secret key<input id="binance-secret-key" type="password" autocomplete="off" placeholder="Оставьте пустым, чтобы не менять"></label>
+      <div id="binance-form-error" class="form-error" hidden></div>
+      <div class="modal-actions split-actions">
+        <button id="disconnect-binance" type="button" class="danger">Отключить</button>
+        <div>
+          <button value="cancel" type="button" data-close-dialog="binance-dialog">Отмена</button>
+          <button id="connect-binance" type="submit" class="primary">Сохранить и подключить</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="trading-dialog" class="modal">
+    <form id="trading-form" method="dialog">
+      <div class="modal-heading">
+        <div><h2>Параметры торговли</h2><p class="muted">Настройки ручного открытия позиции</p></div>
+        <button class="icon-button" type="button" data-close-dialog="trading-dialog" aria-label="Закрыть">×</button>
+      </div>
+      <div class="form-grid">
+        <label>Объём позиции, USDT<input id="trading-position-usdt" type="number" min="0.01" step="0.01" required></label>
+        <label>Плечо<input id="trading-leverage" type="number" min="1" max="125" step="1" required></label>
+        <label>Округление<select id="trading-rounding"><option value="down">В меньшую сторону</option><option value="up">В большую сторону</option></select></label>
+        <label>Страховка, сек<input type="number" value="0" disabled><small>Заглушка</small></label>
+      </div>
+      <div class="preview-panel">
+        <label>Актив для расчёта<input id="preview-symbol" type="text" value="BTCUSDT" autocomplete="off"></label>
+        <div id="volume-preview" class="preview-values muted">Введите параметры для расчёта</div>
+      </div>
+      <div id="trading-form-error" class="form-error" hidden></div>
+      <div class="modal-actions">
+        <button value="cancel" type="button" data-close-dialog="trading-dialog">Отмена</button>
+        <button type="submit" class="primary">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
 
   <template id="row-template">
     <tr>

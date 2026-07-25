@@ -8,6 +8,8 @@ services:
       - .env
     ports:
       - "8000:8000"
+    volumes:
+      - ./local_data:/app/local_data
     depends_on:
       mysql:
         condition: service_healthy
@@ -49,6 +51,8 @@ services:
       UPLOAD_LIMIT: 64M
     ports:
       - "8080:80"
+    volumes:
+      - ./local_data:/app/local_data
     depends_on:
       mysql:
         condition: service_healthy

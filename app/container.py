@@ -2,6 +2,20 @@ import asyncio
 
 from app.db.session import SessionFactory, engine
 from app.exchanges.registry import ExchangeRegistry
+from app.local_settings.store import LocalSettingsStore
+from app.services.exchange_accounts.binance_adapter_factory import BinanceTradingAdapterFactory
+from app.services.exchange_accounts.connect_binance import ConnectBinanceService
+from app.services.exchange_accounts.disconnect_binance import DisconnectBinanceService
+from app.services.exchange_accounts.get_binance_balance import GetBinanceBalanceService
+from app.services.exchange_accounts.get_binance_settings import GetBinanceSettingsService
+from app.services.exchange_accounts.get_binance_status import GetBinanceStatusService
+from app.services.trading.close_binance_position import CloseBinancePositionService
+from app.services.trading.get_settings import GetTradingSettingsService
+from app.services.trading.list_binance_positions import ListBinancePositionsService
+from app.services.trading.open_binance_position import OpenBinancePositionService
+from app.services.trading.preview_volume import PreviewBinanceVolumeService
+from app.services.trading.set_binance_leverage import SetBinanceLeverageService
+from app.services.trading.update_settings import UpdateTradingSettingsService
 from app.repositories.assets import AssetRepository
 from app.repositories.blacklisted_assets import BlacklistedAssetRepository
 from app.repositories.exchanges import ExchangeRepository
@@ -25,6 +39,43 @@ from app.services.spreads.window_refresh import SpreadWindowRefreshService
 class Container:
     def __init__(self) -> None:
         self.exchange_registry = ExchangeRegistry()
+        self.local_settings_store = LocalSettingsStore()
+        self.binance_trading_adapter_factory = BinanceTradingAdapterFactory(
+            self.local_settings_store,
+        )
+        self.get_binance_settings = GetBinanceSettingsService(self.local_settings_store)
+        self.get_binance_status = GetBinanceStatusService(
+            self.binance_trading_adapter_factory,
+        )
+        self.get_binance_balance = GetBinanceBalanceService(
+            self.binance_trading_adapter_factory,
+        )
+        self.connect_binance = ConnectBinanceService(
+            self.local_settings_store,
+            self.binance_trading_adapter_factory,
+        )
+        self.disconnect_binance = DisconnectBinanceService(self.local_settings_store)
+        self.get_trading_settings = GetTradingSettingsService(self.local_settings_store)
+        self.update_trading_settings = UpdateTradingSettingsService(
+            self.local_settings_store,
+        )
+        self.preview_binance_volume = PreviewBinanceVolumeService(
+            self.binance_trading_adapter_factory,
+        )
+        self.list_binance_positions = ListBinancePositionsService(
+            self.binance_trading_adapter_factory,
+        )
+        self.set_binance_leverage = SetBinanceLeverageService(
+            self.binance_trading_adapter_factory,
+        )
+        self.open_binance_position = OpenBinancePositionService(
+            self.local_settings_store,
+            self.binance_trading_adapter_factory,
+        )
+        self.close_binance_position = CloseBinancePositionService(
+            self.local_settings_store,
+            self.binance_trading_adapter_factory,
+        )
         self.exchange_repository = ExchangeRepository()
         self.asset_repository = AssetRepository()
         self.favorite_repository = FavoriteRepository()
