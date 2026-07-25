@@ -36,13 +36,16 @@
           </div>
           <button id="configure-binance" type="button">Настроить</button>
         </div>
-        <div class="exchange-row disabled-row">
+        <div class="exchange-row">
           <div>
             <strong>Bybit</strong>
-            <div><span class="status neutral">заглушка</span></div>
+            <div><span id="bybit-state" class="status neutral">не проверено</span></div>
           </div>
-          <div class="exchange-values muted">Подключение аккаунта будет добавлено позже</div>
-          <button type="button" disabled>Настроить</button>
+          <div class="exchange-values">
+            <span>Баланс: <strong id="bybit-balance">—</strong></span>
+            <span id="bybit-message" class="muted">—</span>
+          </div>
+          <button id="configure-bybit" type="button">Настроить</button>
         </div>
       </div>
     </article>
@@ -166,8 +169,9 @@
         <div><h2>Binance</h2><p id="binance-config-hint" class="muted">Настройка API-доступа</p></div>
         <button class="icon-button" type="button" data-close-dialog="binance-dialog" aria-label="Закрыть">×</button>
       </div>
-      <label>API key<input id="binance-api-key" type="password" autocomplete="off" placeholder="Оставьте пустым, чтобы не менять"></label>
-      <label>Secret key<input id="binance-secret-key" type="password" autocomplete="off" placeholder="Оставьте пустым, чтобы не менять"></label>
+      <label>API key<input id="binance-api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="Только значение ключа"></label>
+      <label>Secret key<input id="binance-secret-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="Только значение секрета"></label>
+      <p class="muted credential-hint">Ключ и секрет передаются Binance без проверки формата приложением. Удаляются только пробелы и переносы по краям.</p>
       <div id="binance-form-error" class="form-error" hidden></div>
       <div class="modal-actions split-actions">
         <button id="disconnect-binance" type="button" class="danger">Отключить</button>
@@ -179,21 +183,48 @@
     </form>
   </dialog>
 
+  <dialog id="bybit-dialog" class="modal">
+    <form id="bybit-form" method="dialog">
+      <div class="modal-heading">
+        <div><h2>Bybit</h2><p id="bybit-config-hint" class="muted">Настройка API-доступа</p></div>
+        <button class="icon-button" type="button" data-close-dialog="bybit-dialog" aria-label="Закрыть">×</button>
+      </div>
+      <label>API key<input id="bybit-api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="Только значение ключа"></label>
+      <label>Secret key<input id="bybit-secret-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="Только значение секрета"></label>
+      <p class="muted credential-hint">Используется Bybit V5 API для Unified Account и USDT perpetual.</p>
+      <div id="bybit-form-error" class="form-error" hidden></div>
+      <div class="modal-actions split-actions">
+        <button id="disconnect-bybit" type="button" class="danger">Отключить</button>
+        <div>
+          <button value="cancel" type="button" data-close-dialog="bybit-dialog">Отмена</button>
+          <button type="submit" class="primary">Сохранить и подключить</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="trading-dialog" class="modal">
     <form id="trading-form" method="dialog">
       <div class="modal-heading">
-        <div><h2>Параметры торговли</h2><p class="muted">Настройки ручного открытия позиции</p></div>
+        <div><h2>Параметры торговли</h2><p class="muted">Настройки и ручные тестовые операции</p></div>
         <button class="icon-button" type="button" data-close-dialog="trading-dialog" aria-label="Закрыть">×</button>
       </div>
       <div class="form-grid">
+        <label>Биржа<select id="trading-exchange"><option value="binance">Binance</option><option value="bybit">Bybit</option></select></label>
+        <label>Актив для расчёта<select id="preview-symbol"></select><small>Только активы из избранного</small></label>
         <label>Объём позиции, USDT<input id="trading-position-usdt" type="number" min="0.01" step="0.01" required></label>
         <label>Плечо<input id="trading-leverage" type="number" min="1" max="125" step="1" required></label>
         <label>Округление<select id="trading-rounding"><option value="down">В меньшую сторону</option><option value="up">В большую сторону</option></select></label>
         <label>Страховка, сек<input type="number" value="0" disabled><small>Заглушка</small></label>
       </div>
       <div class="preview-panel">
-        <label>Актив для расчёта<input id="preview-symbol" type="text" value="BTCUSDT" autocomplete="off"></label>
-        <div id="volume-preview" class="preview-values muted">Введите параметры для расчёта</div>
+        <div id="volume-preview" class="preview-values muted">Выберите избранный актив</div>
+        <div class="trade-test-actions">
+          <button id="test-open-long" type="button" class="long-action">Открыть LONG</button>
+          <button id="test-open-short" type="button" class="short-action">Открыть SHORT</button>
+          <button id="test-close-position" type="button" class="danger">Закрыть позицию</button>
+        </div>
+        <div id="trading-action-status" class="action-status muted">Операции не выполнялись</div>
       </div>
       <div id="trading-form-error" class="form-error" hidden></div>
       <div class="modal-actions">

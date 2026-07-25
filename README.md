@@ -16,9 +16,9 @@
 - исключение чёрного списка из WebSocket/polling-подписок;
 - пауза динамической сортировки без остановки обновления цен;
 - настройки интерфейса в `localStorage` браузера;
-- ручное подключение Binance USDⓈ-M Futures, проверка состояния и чтение USDT-баланса;
+- ручное подключение Binance и Bybit USDT perpetual, проверка состояния и чтение USDT-баланса;
 - ручные market-операции открытия/закрытия, установка плеча и расчёт количества по сумме USDT;
-- локальные Binance-ключи и торговые параметры в `local_data/settings.json`;
+- локальные ключи Binance/Bybit и торговые параметры в `local_data/settings.json`;
 - FastAPI, MySQL 8.4, phpMyAdmin и статический интерфейс в Docker Compose.
 
 ## Принятые ограничения первой версии
@@ -41,12 +41,13 @@ docker compose up --build
 - API docs: http://localhost:8000/docs
 - phpMyAdmin: http://localhost:8080
 
-## Binance и ручная торговля
+## Биржевые аккаунты и ручная торговля
 
 Автоматическая торговля отсутствует. Ручки открытия и закрытия отправляют market-ордер
-только при явном `confirm=true`. Количество рассчитывается по `ask` для покупки и по
-`bid` для продажи с учётом `MARKET_LOT_SIZE`, минимального notional и выбранного
-округления.
+только при явном `confirm=true`. Количество рассчитывается по `ask` для LONG и по `bid` для SHORT с учётом
+биржевого шага количества, минимального notional и выбранного округления. В торговой
+модалке доступны ручные тестовые LONG/SHORT и полное закрытие позиций по выбранному
+избранному активу.
 
 Ключи не сохраняются в MySQL и не возвращаются через API. Они лежат локально в
 `local_data/settings.json`, который подключён к контейнеру отдельным volume.
@@ -84,3 +85,20 @@ docker compose up --build
 - `POST /api/v1/exchanges/binance/positions/close`
 - `GET /api/v1/trading/settings`
 - `PUT /api/v1/trading/settings`
+
+
+### Аккаунт Bybit
+
+- `GET /api/v1/exchanges/bybit/settings`
+- `GET /api/v1/exchanges/bybit/status`
+- `GET /api/v1/exchanges/bybit/balance`
+- `POST /api/v1/exchanges/bybit/connect`
+- `POST /api/v1/exchanges/bybit/disconnect`
+
+### Ручные операции Bybit
+
+- `GET /api/v1/exchanges/bybit/volume-preview`
+- `GET /api/v1/exchanges/bybit/positions`
+- `PUT /api/v1/exchanges/bybit/leverage`
+- `POST /api/v1/exchanges/bybit/positions/open`
+- `POST /api/v1/exchanges/bybit/positions/close`

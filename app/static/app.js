@@ -33,6 +33,9 @@ const state = {
   binanceSettings: null,
   binanceStatus: null,
   binanceBalance: null,
+  bybitSettings: null,
+  bybitStatus: null,
+  bybitBalance: null,
   tradingSettings: null,
   previewTimer: null,
 };
@@ -63,14 +66,30 @@ const elements = {
   binanceConfigHint: document.querySelector("#binance-config-hint"),
   binanceFormError: document.querySelector("#binance-form-error"),
   disconnectBinance: document.querySelector("#disconnect-binance"),
+  configureBybit: document.querySelector("#configure-bybit"),
+  bybitState: document.querySelector("#bybit-state"),
+  bybitBalance: document.querySelector("#bybit-balance"),
+  bybitMessage: document.querySelector("#bybit-message"),
+  bybitDialog: document.querySelector("#bybit-dialog"),
+  bybitForm: document.querySelector("#bybit-form"),
+  bybitApiKey: document.querySelector("#bybit-api-key"),
+  bybitSecretKey: document.querySelector("#bybit-secret-key"),
+  bybitConfigHint: document.querySelector("#bybit-config-hint"),
+  bybitFormError: document.querySelector("#bybit-form-error"),
+  disconnectBybit: document.querySelector("#disconnect-bybit"),
   tradingDialog: document.querySelector("#trading-dialog"),
   tradingForm: document.querySelector("#trading-form"),
+  tradingExchange: document.querySelector("#trading-exchange"),
   tradingPositionUsdt: document.querySelector("#trading-position-usdt"),
   tradingLeverage: document.querySelector("#trading-leverage"),
   tradingRounding: document.querySelector("#trading-rounding"),
   previewSymbol: document.querySelector("#preview-symbol"),
   volumePreview: document.querySelector("#volume-preview"),
   tradingFormError: document.querySelector("#trading-form-error"),
+  tradingActionStatus: document.querySelector("#trading-action-status"),
+  testOpenLong: document.querySelector("#test-open-long"),
+  testOpenShort: document.querySelector("#test-open-short"),
+  testClosePosition: document.querySelector("#test-close-position"),
   summaryPositionUsdt: document.querySelector("#summary-position-usdt"),
   summaryLeverage: document.querySelector("#summary-leverage"),
   summaryRounding: document.querySelector("#summary-rounding"),
@@ -118,50 +137,61 @@ function formatMoney(value, currency = "USDT") {
   return `${Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} ${currency}`;
 }
 
-function renderBinanceOverview() {
-  const status = state.binanceStatus;
-  elements.binanceState.className = "status neutral";
+function renderExchangeOverview(exchange) {
+  const status = state[`${exchange}Status`];
+  const balance = state[`${exchange}Balance`];
+  const stateElement = elements[`${exchange}State`];
+  const messageElement = elements[`${exchange}Message`];
+  const balanceElement = elements[`${exchange}Balance`];
+  stateElement.className = "status neutral";
   if (!status) {
-    elements.binanceState.textContent = "не проверено";
-    elements.binanceMessage.textContent = "—";
-    elements.binanceBalance.textContent = "—";
+    stateElement.textContent = "не проверено";
+    messageElement.textContent = "—";
+    balanceElement.textContent = "—";
     return;
   }
   const labels = { connected: "подключено", disabled: "отключено", not_configured: "не настроено", error: "ошибка" };
-  elements.binanceState.textContent = labels[status.state] || status.state;
-  elements.binanceState.className = `status ${status.state === "connected" ? "online" : status.state === "error" ? "offline" : "neutral"}`;
-  elements.binanceMessage.textContent = status.message || "—";
-  elements.binanceBalance.textContent = state.binanceBalance
-    ? `доступно ${formatMoney(state.binanceBalance.available, state.binanceBalance.currency)} · equity ${formatMoney(state.binanceBalance.equity, state.binanceBalance.currency)}`
+  stateElement.textContent = labels[status.state] || status.state;
+  stateElement.className = `status ${status.state === "connected" ? "online" : status.state === "error" ? "offline" : "neutral"}`;
+  messageElement.textContent = status.message || "—";
+  balanceElement.textContent = balance
+    ? `доступно ${formatMoney(balance.available, balance.currency)} · equity ${formatMoney(balance.equity, balance.currency)}`
     : "—";
 }
 
-async function loadBinanceSettings() {
-  state.binanceSettings = await api("/api/v1/exchanges/binance/settings");
-  const settings = state.binanceSettings;
-  elements.binanceConfigHint.textContent = settings.api_key_configured
+async function loadExchangeSettings(exchange) {
+  const settings = await api(`/api/v1/exchanges/${exchange}/settings`);
+  state[`${exchange}Settings`] = settings;
+  const hint = elements[`${exchange}ConfigHint`];
+  hint.textContent = settings.api_key_configured
     ? `Ключ сохранён: ${settings.api_key_masked || "***"}`
     : "API-ключи ещё не сохранены";
-  elements.disconnectBinance.disabled = !settings.enabled;
+  elements[`disconnect${exchange[0].toUpperCase()}${exchange.slice(1)}`].disabled = !settings.enabled;
+}
+
+async function refreshOneExchange(exchange) {
+  try {
+    state[`${exchange}Status`] = await api(`/api/v1/exchanges/${exchange}/status`);
+    state[`${exchange}Balance`] = null;
+    if (state[`${exchange}Status`].state === "connected") {
+      try {
+        state[`${exchange}Balance`] = await api(`/api/v1/exchanges/${exchange}/balance`);
+      } catch (error) {
+        state[`${exchange}Status`] = { ...state[`${exchange}Status`], state: "error", message: error.message };
+      }
+    }
+  } catch (error) {
+    state[`${exchange}Status`] = { state: "error", message: error.message };
+    state[`${exchange}Balance`] = null;
+  }
+  renderExchangeOverview(exchange);
 }
 
 async function refreshExchangeOverview() {
   elements.refreshExchanges.disabled = true;
   try {
-    state.binanceStatus = await api("/api/v1/exchanges/binance/status");
-    state.binanceBalance = null;
-    if (state.binanceStatus.state === "connected") {
-      try {
-        state.binanceBalance = await api("/api/v1/exchanges/binance/balance");
-      } catch (error) {
-        state.binanceStatus = { ...state.binanceStatus, state: "error", message: error.message };
-      }
-    }
-  } catch (error) {
-    state.binanceStatus = { state: "error", message: error.message };
-    state.binanceBalance = null;
+    await Promise.all([refreshOneExchange("binance"), refreshOneExchange("bybit")]);
   } finally {
-    renderBinanceOverview();
     elements.refreshExchanges.disabled = false;
   }
 }
@@ -187,23 +217,127 @@ function scheduleVolumePreview() {
   state.previewTimer = setTimeout(loadVolumePreview, 300);
 }
 
+function favoriteAssets() {
+  return [...state.assets.values()]
+    .filter((asset) => asset.is_favorite)
+    .sort((left, right) => left.display_symbol.localeCompare(right.display_symbol, "ru-RU"));
+}
+
+function renderFavoriteOptions() {
+  const current = elements.previewSymbol.value;
+  const favorites = favoriteAssets();
+  if (favorites.length === 0) {
+    elements.previewSymbol.innerHTML = '<option value="">Добавьте активы в избранное</option>';
+    elements.previewSymbol.disabled = true;
+  } else {
+    elements.previewSymbol.disabled = false;
+    elements.previewSymbol.innerHTML = favorites
+      .map((asset) => `<option value="${asset.base_asset}${asset.quote_asset}">${asset.display_symbol}</option>`)
+      .join("");
+    if (favorites.some((asset) => `${asset.base_asset}${asset.quote_asset}` === current)) {
+      elements.previewSymbol.value = current;
+    }
+  }
+  updateTradeActionAvailability();
+}
+
+function updateTradeActionAvailability(busy = false) {
+  const disabled = busy || !elements.previewSymbol.value;
+  elements.testOpenLong.disabled = disabled;
+  elements.testOpenShort.disabled = disabled;
+  elements.testClosePosition.disabled = disabled;
+}
+
 async function loadVolumePreview() {
+  const exchange = elements.tradingExchange.value;
   const symbol = elements.previewSymbol.value.trim().toUpperCase();
   const amount = Number(elements.tradingPositionUsdt.value);
   const rounding = elements.tradingRounding.value;
   if (!symbol || !Number.isFinite(amount) || amount <= 0) {
-    elements.volumePreview.textContent = "Введите актив и объём";
+    elements.volumePreview.textContent = "Выберите избранный актив и укажите объём";
     return;
   }
   elements.volumePreview.textContent = "Расчёт…";
   try {
     const query = new URLSearchParams({ symbol, amount_usdt: String(amount), rounding });
-    const data = await api(`/api/v1/exchanges/binance/volume-preview?${query}`);
+    const data = await api(`/api/v1/exchanges/${exchange}/volume-preview?${query}`);
     elements.volumePreview.classList.remove("muted");
-    elements.volumePreview.innerHTML = `Покупка: <strong>${data.buy.quantity}</strong> (${formatMoney(data.buy.rounded_amount_usdt)}) · Продажа: <strong>${data.sell.quantity}</strong> (${formatMoney(data.sell.rounded_amount_usdt)})`;
+    elements.volumePreview.innerHTML = `${exchange === "binance" ? "Binance" : "Bybit"} · LONG по ask: <strong>${data.buy.quantity}</strong> (${formatMoney(data.buy.rounded_amount_usdt)}) · SHORT по bid: <strong>${data.sell.quantity}</strong> (${formatMoney(data.sell.rounded_amount_usdt)})`;
   } catch (error) {
     elements.volumePreview.classList.add("muted");
     elements.volumePreview.textContent = error.message;
+  }
+}
+
+async function executeTestOpen(direction) {
+  const exchange = elements.tradingExchange.value;
+  const symbol = elements.previewSymbol.value;
+  const amount = Number(elements.tradingPositionUsdt.value);
+  const leverage = Number(elements.tradingLeverage.value);
+  const rounding = elements.tradingRounding.value;
+  if (!symbol) return;
+  const title = direction === "long" ? "LONG" : "SHORT";
+  if (!confirm(`Открыть ${title} ${symbol} на ${exchange.toUpperCase()} объёмом ${amount} USDT, плечо ${leverage}x?`)) return;
+  updateTradeActionAvailability(true);
+  elements.tradingActionStatus.textContent = `Отправка ${title}…`;
+  try {
+    const result = await api(`/api/v1/exchanges/${exchange}/positions/open`, {
+      method: "POST",
+      body: JSON.stringify({
+        symbol,
+        direction,
+        amount_usdt: amount,
+        leverage,
+        rounding,
+        confirm: true,
+      }),
+    });
+    elements.tradingActionStatus.className = "action-status positive";
+    elements.tradingActionStatus.textContent = `${result.message}${result.order_id ? ` · order ${result.order_id}` : ""}`;
+    await refreshOneExchange(exchange);
+  } catch (error) {
+    elements.tradingActionStatus.className = "action-status negative";
+    elements.tradingActionStatus.textContent = error.message;
+  } finally {
+    updateTradeActionAvailability();
+  }
+}
+
+async function executeTestClose() {
+  const exchange = elements.tradingExchange.value;
+  const symbol = elements.previewSymbol.value;
+  if (!symbol) return;
+  updateTradeActionAvailability(true);
+  elements.tradingActionStatus.textContent = "Проверка открытых позиций…";
+  try {
+    const query = new URLSearchParams({ symbol });
+    const data = await api(`/api/v1/exchanges/${exchange}/positions?${query}`);
+    const normalizedSymbol = symbol.replace(/[^A-Z0-9]/g, "");
+    const positions = (data.items || []).filter((item) => item.symbol === normalizedSymbol);
+    if (positions.length === 0) throw new Error(`Открытые позиции ${symbol} не найдены`);
+    const directions = positions.map((item) => item.direction.toUpperCase()).join(" и ");
+    if (!confirm(`Закрыть ${directions} по ${symbol} на ${exchange.toUpperCase()} market-ордером?`)) return;
+    const results = [];
+    for (const position of positions) {
+      results.push(await api(`/api/v1/exchanges/${exchange}/positions/close`, {
+        method: "POST",
+        body: JSON.stringify({
+          symbol,
+          direction: position.direction,
+          amount_usdt: null,
+          rounding: elements.tradingRounding.value,
+          confirm: true,
+        }),
+      }));
+    }
+    elements.tradingActionStatus.className = "action-status positive";
+    elements.tradingActionStatus.textContent = results.map((item) => item.message).join(" · ");
+    await refreshOneExchange(exchange);
+  } catch (error) {
+    elements.tradingActionStatus.className = "action-status negative";
+    elements.tradingActionStatus.textContent = error.message;
+  } finally {
+    updateTradeActionAvailability();
   }
 }
 
@@ -219,6 +353,7 @@ async function loadAssets() {
     if (!receivedIds.has(assetId)) state.assets.delete(assetId);
   }
   state.frozenOrder = state.frozenOrder.filter((assetId) => state.assets.has(assetId));
+  renderFavoriteOptions();
   render();
 }
 
@@ -493,6 +628,7 @@ async function toggleFavorite(asset) {
   try {
     await api(`/api/v1/favorites/${asset.id}`, { method });
     asset.is_favorite = !asset.is_favorite;
+    renderFavoriteOptions();
     render();
   } catch (error) {
     console.error(error);
@@ -510,6 +646,7 @@ async function addToBlacklist(asset) {
     await api(`/api/v1/blacklist/${asset.id}`, { method: "POST" });
     state.assets.delete(asset.id);
     state.frozenOrder = state.frozenOrder.filter((assetId) => assetId !== asset.id);
+    renderFavoriteOptions();
     await loadBlacklist();
     render();
   } catch (error) {
@@ -602,51 +739,75 @@ elements.theme.addEventListener("click", () => {
 });
 
 elements.refreshExchanges.addEventListener("click", refreshExchangeOverview);
-elements.configureBinance.addEventListener("click", async () => {
-  setFormError(elements.binanceFormError);
-  elements.binanceApiKey.value = "";
-  elements.binanceSecretKey.value = "";
-  await loadBinanceSettings();
-  elements.binanceDialog.showModal();
-});
-elements.binanceForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  setFormError(elements.binanceFormError);
-  try {
-    await api("/api/v1/exchanges/binance/connect", {
-      method: "POST",
-      body: JSON.stringify({
-        api_key: elements.binanceApiKey.value || null,
-        secret_key: elements.binanceSecretKey.value || null,
-      }),
-    });
-    elements.binanceDialog.close();
-    await Promise.all([loadBinanceSettings(), refreshExchangeOverview()]);
-  } catch (error) {
-    setFormError(elements.binanceFormError, error);
-  }
-});
-elements.disconnectBinance.addEventListener("click", async () => {
-  setFormError(elements.binanceFormError);
-  try {
-    await api("/api/v1/exchanges/binance/disconnect", { method: "POST" });
-    elements.binanceDialog.close();
-    await Promise.all([loadBinanceSettings(), refreshExchangeOverview()]);
-  } catch (error) {
-    setFormError(elements.binanceFormError, error);
-  }
-});
+
+function bindExchangeDialog(exchange) {
+  const title = exchange[0].toUpperCase() + exchange.slice(1);
+  const configure = elements[`configure${title}`];
+  const dialog = elements[`${exchange}Dialog`];
+  const form = elements[`${exchange}Form`];
+  const apiKey = elements[`${exchange}ApiKey`];
+  const secretKey = elements[`${exchange}SecretKey`];
+  const formError = elements[`${exchange}FormError`];
+  const disconnect = elements[`disconnect${title}`];
+
+  configure.addEventListener("click", async () => {
+    setFormError(formError);
+    apiKey.value = "";
+    secretKey.value = "";
+    await loadExchangeSettings(exchange);
+    dialog.showModal();
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setFormError(formError);
+    try {
+      await api(`/api/v1/exchanges/${exchange}/connect`, {
+        method: "POST",
+        body: JSON.stringify({
+          api_key: apiKey.value || null,
+          secret_key: secretKey.value || null,
+        }),
+      });
+      dialog.close();
+      await Promise.all([loadExchangeSettings(exchange), refreshOneExchange(exchange)]);
+    } catch (error) {
+      setFormError(formError, error);
+    }
+  });
+
+  disconnect.addEventListener("click", async () => {
+    setFormError(formError);
+    try {
+      await api(`/api/v1/exchanges/${exchange}/disconnect`, { method: "POST" });
+      dialog.close();
+      await Promise.all([loadExchangeSettings(exchange), refreshOneExchange(exchange)]);
+    } catch (error) {
+      setFormError(formError, error);
+    }
+  });
+}
+
+bindExchangeDialog("binance");
+bindExchangeDialog("bybit");
 
 elements.configureTrading.addEventListener("click", async () => {
   setFormError(elements.tradingFormError);
-  await loadTradingSettings();
+  elements.tradingActionStatus.className = "action-status muted";
+  elements.tradingActionStatus.textContent = "Операции не выполнялись";
+  await Promise.all([loadTradingSettings(), loadAssets()]);
+  renderFavoriteOptions();
   elements.tradingDialog.showModal();
   scheduleVolumePreview();
 });
-for (const input of [elements.tradingPositionUsdt, elements.tradingRounding, elements.previewSymbol]) {
+for (const input of [elements.tradingExchange, elements.tradingPositionUsdt, elements.tradingRounding, elements.previewSymbol]) {
   input.addEventListener("input", scheduleVolumePreview);
   input.addEventListener("change", scheduleVolumePreview);
 }
+elements.testOpenLong.addEventListener("click", () => executeTestOpen("long"));
+elements.testOpenShort.addEventListener("click", () => executeTestOpen("short"));
+elements.testClosePosition.addEventListener("click", executeTestClose);
+
 elements.tradingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   setFormError(elements.tradingFormError);
@@ -670,7 +831,13 @@ for (const button of document.querySelectorAll("[data-close-dialog]")) {
 }
 
 applySettings();
-await Promise.all([loadAssets(), loadBlacklist(), loadBinanceSettings(), loadTradingSettings()]);
+await Promise.all([
+  loadAssets(),
+  loadBlacklist(),
+  loadExchangeSettings("binance"),
+  loadExchangeSettings("bybit"),
+  loadTradingSettings(),
+]);
 await Promise.all([applyRuntimeSettings(), refreshExchangeOverview()]);
 connectSocket();
 setInterval(() => Promise.all([loadAssets(), loadBlacklist()]), 60000);

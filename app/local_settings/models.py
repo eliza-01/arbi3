@@ -12,6 +12,13 @@ class BinanceConnectionSettings:
 
 
 @dataclass(slots=True)
+class BybitConnectionSettings:
+    enabled: bool = False
+    api_key: str = ""
+    secret_key: str = ""
+
+
+@dataclass(slots=True)
 class TradingSettings:
     position_usdt: float = 10.0
     leverage: int = 1
@@ -22,23 +29,28 @@ class TradingSettings:
 @dataclass(slots=True)
 class LocalSettings:
     binance: BinanceConnectionSettings = field(default_factory=BinanceConnectionSettings)
+    bybit: BybitConnectionSettings = field(default_factory=BybitConnectionSettings)
     trading: TradingSettings = field(default_factory=TradingSettings)
 
     def to_dict(self, hide_secrets: bool = False) -> dict[str, Any]:
         data = asdict(self)
         if hide_secrets:
-            api_key = self.binance.api_key
-            data["binance"] = {
-                "enabled": self.binance.enabled,
-                "api_key_masked": _mask(api_key),
-                "api_key_configured": bool(api_key),
-                "secret_key_configured": bool(self.binance.secret_key),
-            }
+            data["binance"] = _public_exchange_settings(
+                self.binance.enabled,
+                self.binance.api_key,
+                self.binance.secret_key,
+            )
+            data["bybit"] = _public_exchange_settings(
+                self.bybit.enabled,
+                self.bybit.api_key,
+                self.bybit.secret_key,
+            )
         return data
 
 
 def settings_from_dict(data: dict[str, Any]) -> LocalSettings:
     binance_raw = data.get("binance") if isinstance(data.get("binance"), dict) else {}
+    bybit_raw = data.get("bybit") if isinstance(data.get("bybit"), dict) else {}
     trading_raw = data.get("trading") if isinstance(data.get("trading"), dict) else {}
     rounding = "up" if trading_raw.get("rounding") == "up" else "down"
     return LocalSettings(
@@ -46,6 +58,11 @@ def settings_from_dict(data: dict[str, Any]) -> LocalSettings:
             enabled=_bool(binance_raw.get("enabled"), False),
             api_key=str(binance_raw.get("api_key") or "").strip(),
             secret_key=str(binance_raw.get("secret_key") or "").strip(),
+        ),
+        bybit=BybitConnectionSettings(
+            enabled=_bool(bybit_raw.get("enabled"), False),
+            api_key=str(bybit_raw.get("api_key") or "").strip(),
+            secret_key=str(bybit_raw.get("secret_key") or "").strip(),
         ),
         trading=TradingSettings(
             position_usdt=_positive_float(trading_raw.get("position_usdt"), 10.0),
@@ -57,6 +74,20 @@ def settings_from_dict(data: dict[str, Any]) -> LocalSettings:
             ),
         ),
     )
+
+
+def _public_exchange_settings(
+    enabled: bool,
+    api_key: str,
+    secret_key: str,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "enabled": enabled,
+        "api_key_masked": _mask(api_key),
+        "api_key_configured": bool(api_key),
+        "secret_key_configured": bool(secret_key),
+    }
+    return result
 
 
 def _mask(value: str) -> str:

@@ -41,6 +41,7 @@ class Position:
     quantity: float
     entry_price: float | None = None
     unrealized_pnl: float | None = None
+    position_index: int | None = None
 
 
 @dataclass(slots=True, frozen=True)

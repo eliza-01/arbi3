@@ -4,17 +4,28 @@ from app.db.session import SessionFactory, engine
 from app.exchanges.registry import ExchangeRegistry
 from app.local_settings.store import LocalSettingsStore
 from app.services.exchange_accounts.binance_adapter_factory import BinanceTradingAdapterFactory
+from app.services.exchange_accounts.bybit_adapter_factory import BybitTradingAdapterFactory
 from app.services.exchange_accounts.connect_binance import ConnectBinanceService
+from app.services.exchange_accounts.connect_bybit import ConnectBybitService
 from app.services.exchange_accounts.disconnect_binance import DisconnectBinanceService
+from app.services.exchange_accounts.disconnect_bybit import DisconnectBybitService
 from app.services.exchange_accounts.get_binance_balance import GetBinanceBalanceService
+from app.services.exchange_accounts.get_bybit_balance import GetBybitBalanceService
 from app.services.exchange_accounts.get_binance_settings import GetBinanceSettingsService
+from app.services.exchange_accounts.get_bybit_settings import GetBybitSettingsService
 from app.services.exchange_accounts.get_binance_status import GetBinanceStatusService
+from app.services.exchange_accounts.get_bybit_status import GetBybitStatusService
 from app.services.trading.close_binance_position import CloseBinancePositionService
+from app.services.trading.close_bybit_position import CloseBybitPositionService
 from app.services.trading.get_settings import GetTradingSettingsService
 from app.services.trading.list_binance_positions import ListBinancePositionsService
+from app.services.trading.list_bybit_positions import ListBybitPositionsService
 from app.services.trading.open_binance_position import OpenBinancePositionService
+from app.services.trading.open_bybit_position import OpenBybitPositionService
 from app.services.trading.preview_volume import PreviewBinanceVolumeService
+from app.services.trading.preview_bybit_volume import PreviewBybitVolumeService
 from app.services.trading.set_binance_leverage import SetBinanceLeverageService
+from app.services.trading.set_bybit_leverage import SetBybitLeverageService
 from app.services.trading.update_settings import UpdateTradingSettingsService
 from app.repositories.assets import AssetRepository
 from app.repositories.blacklisted_assets import BlacklistedAssetRepository
@@ -55,6 +66,21 @@ class Container:
             self.binance_trading_adapter_factory,
         )
         self.disconnect_binance = DisconnectBinanceService(self.local_settings_store)
+        self.bybit_trading_adapter_factory = BybitTradingAdapterFactory(
+            self.local_settings_store,
+        )
+        self.get_bybit_settings = GetBybitSettingsService(self.local_settings_store)
+        self.get_bybit_status = GetBybitStatusService(
+            self.bybit_trading_adapter_factory,
+        )
+        self.get_bybit_balance = GetBybitBalanceService(
+            self.bybit_trading_adapter_factory,
+        )
+        self.connect_bybit = ConnectBybitService(
+            self.local_settings_store,
+            self.bybit_trading_adapter_factory,
+        )
+        self.disconnect_bybit = DisconnectBybitService(self.local_settings_store)
         self.get_trading_settings = GetTradingSettingsService(self.local_settings_store)
         self.update_trading_settings = UpdateTradingSettingsService(
             self.local_settings_store,
@@ -75,6 +101,23 @@ class Container:
         self.close_binance_position = CloseBinancePositionService(
             self.local_settings_store,
             self.binance_trading_adapter_factory,
+        )
+        self.preview_bybit_volume = PreviewBybitVolumeService(
+            self.bybit_trading_adapter_factory,
+        )
+        self.list_bybit_positions = ListBybitPositionsService(
+            self.bybit_trading_adapter_factory,
+        )
+        self.set_bybit_leverage = SetBybitLeverageService(
+            self.bybit_trading_adapter_factory,
+        )
+        self.open_bybit_position = OpenBybitPositionService(
+            self.local_settings_store,
+            self.bybit_trading_adapter_factory,
+        )
+        self.close_bybit_position = CloseBybitPositionService(
+            self.local_settings_store,
+            self.bybit_trading_adapter_factory,
         )
         self.exchange_repository = ExchangeRepository()
         self.asset_repository = AssetRepository()

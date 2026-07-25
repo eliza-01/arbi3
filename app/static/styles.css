@@ -112,3 +112,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .exchange-values { grid-column: 1 / -1; }
   .form-grid { grid-template-columns: 1fr; }
 }
+.trade-test-actions { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; }
+.long-action { color: var(--positive); border-color: color-mix(in srgb, var(--positive) 55%, var(--line)); }
+.short-action { color: var(--sell); border-color: color-mix(in srgb, var(--sell) 55%, var(--line)); }
+.action-status { min-height: 20px; font-size: 13px; line-height: 1.45; }
+@media (max-width: 720px) { .trade-test-actions { grid-template-columns: 1fr; } }
